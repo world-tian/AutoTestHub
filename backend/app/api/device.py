@@ -513,7 +513,7 @@ def complete_queue_item(queue_id: str, data: QueueCompleteRequest, db: Session =
             # 使用最新的 queue item result 更新
             if item.result:
                 res.log_url = item.result
-            res.end_time = datetime.utcnow().isoformat()
+            res.end_time = datetime.utcnow()
         
     db.commit()
     return {"message": "Execution completed"}

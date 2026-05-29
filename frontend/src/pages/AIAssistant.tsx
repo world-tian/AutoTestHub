@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Card, Input, Button, List, Typography, Avatar, Spin, message } from 'antd';
 import { RobotOutlined, UserOutlined, SendOutlined, BulbOutlined } from '@ant-design/icons';
 import { chatWithAI, ChatMessage } from '../api';
@@ -14,6 +15,7 @@ const QuickQuestions = [
 ];
 
 export const AIAssistant: React.FC = () => {
+    const location = useLocation();
     const [messages, setMessages] = useState<ChatMessage[]>([
         {
             role: 'assistant',
@@ -23,6 +25,7 @@ export const AIAssistant: React.FC = () => {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const initializedRef = useRef(false);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -31,6 +34,19 @@ export const AIAssistant: React.FC = () => {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    useEffect(() => {
+        const state = location.state as { initialQuestion?: string };
+        if (state?.initialQuestion && !initializedRef.current) {
+            initializedRef.current = true;
+            setInput(state.initialQuestion);
+            // 自动发送
+            setTimeout(() => {
+                const sendBtn = document.getElementById('ai-send-btn');
+                if (sendBtn) sendBtn.click();
+            }, 100);
+        }
+    }, [location.state]);
 
     const handleSend = async () => {
         if (!input.trim() || loading) return;
@@ -156,6 +172,7 @@ export const AIAssistant: React.FC = () => {
                             style={{ flex: 1 }}
                         />
                         <Button
+                            id="ai-send-btn"
                             type="primary"
                             icon={<SendOutlined />}
                             onClick={handleSend}

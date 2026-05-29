@@ -110,7 +110,7 @@ export const generateTestCases = async (reqId: string) => {
     return response.data;
 };
 
-export const generateTestCasesV2 = async (projectId: string, data: { requirement_id?: string; content?: string }) => {
+export const generateTestCasesV2 = async (projectId: string, data: { requirement_id?: string; content?: string; feature?: string }) => {
     const response = await api.post(`/projects/${projectId}/generate-cases`, { ...data, project_id: projectId });
     return response.data;
 };
@@ -138,6 +138,11 @@ export const enableTestCase = async (caseId: string) => {
 
 export const getExecutionRuns = async (projectId: string) => {
     const response = await api.get<ExecutionRun[]>(`/projects/${projectId}/execution-runs`);
+    return response.data;
+};
+
+export const getAllExecutionRuns = async () => {
+    const response = await api.get<ExecutionRun[]>('/execution-runs');
     return response.data;
 };
 
@@ -474,6 +479,17 @@ export const deleteTestPlan = async (planId: string) => {
     return response.data;
 };
 
+export interface TriggerExecutionRequest {
+    name: string;
+    agent_id?: string;
+    device_id?: string;
+    priority?: number;
+    test_case_ids?: string[];
+    working_dir?: string;
+    test_command?: string;
+    test_plan_id?: string;
+}
+
 export const triggerExecution = async (projectId: string, request: TriggerExecutionRequest) => {
     const response = await api.post(`/projects/${projectId}/trigger-execution`, request);
     return response.data;
@@ -483,4 +499,316 @@ export const triggerExecution = async (projectId: string, request: TriggerExecut
 export const deleteExecutionRun = async (runId: string) => {
   const response = await api.delete(`/execution-runs/${runId}`);
   return response.data;
+};
+
+// 用例评审接口
+export interface TestCaseReview {
+    id: string;
+    project_id: string;
+    test_case_id: string;
+    reviewer_id?: string;
+    status: string;
+    comments?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export const getTestCaseReviews = async (params?: {
+    project_id?: string;
+    test_case_id?: string;
+    status?: string;
+}) => {
+    const response = await api.get<TestCaseReview[]>('/test-case-reviews', { params });
+    return response.data;
+};
+
+export const createTestCaseReview = async (projectId: string, data: {
+    test_case_id: string;
+    status?: string;
+    comments?: string;
+}) => {
+    const response = await api.post<TestCaseReview>('/test-case-reviews', data, { params: { project_id: projectId } });
+    return response.data;
+};
+
+export const updateTestCaseReview = async (reviewId: string, data: any) => {
+    const response = await api.put<TestCaseReview>(`/test-case-reviews/${reviewId}`, data);
+    return response.data;
+};
+
+export const deleteTestCaseReview = async (reviewId: string) => {
+    const response = await api.delete(`/test-case-reviews/${reviewId}`);
+    return response.data;
+};
+
+// 缺陷管理接口
+export interface Defect {
+    id: string;
+    project_id: string;
+    title: string;
+    description?: string;
+    test_case_id?: string;
+    execution_result_id?: string;
+    severity: string;
+    status: string;
+    priority: string;
+    external_id?: string;
+    external_source?: string;
+    external_url?: string;
+    created_by?: string;
+    assigned_to?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export const getDefects = async (params?: {
+    project_id?: string;
+    status?: string;
+    severity?: string;
+    test_case_id?: string;
+}) => {
+    const response = await api.get<Defect[]>('/defects', { params });
+    return response.data;
+};
+
+export const createDefect = async (projectId: string, data: any) => {
+    const response = await api.post<Defect>('/defects', data, { params: { project_id: projectId } });
+    return response.data;
+};
+
+export const updateDefect = async (defectId: string, data: any) => {
+    const response = await api.put<Defect>(`/defects/${defectId}`, data);
+    return response.data;
+};
+
+export const getDefect = async (defectId: string) => {
+    const response = await api.get<Defect>(`/defects/${defectId}`);
+    return response.data;
+};
+
+export const deleteDefect = async (defectId: string) => {
+    const response = await api.delete(`/defects/${defectId}`);
+    return response.data;
+};
+
+// 工具箱接口
+export interface ToolDefinition {
+    id: string;
+    name: string;
+    description?: string;
+    tool_type: string;
+    category?: string;
+    config_schema?: any;
+    code?: string;
+    config?: any;
+    is_public: boolean;
+    tags?: string[];
+    capabilities?: string[];
+    created_at: string;
+    updated_at: string;
+}
+
+export interface ToolInstance {
+    id: string;
+    tool_definition_id: string;
+    name: string;
+    project_id?: string;
+    agent_id?: string;
+    config?: any;
+    status: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export const getToolDefinitions = async (params?: {
+    tool_type?: string;
+    category?: string;
+}) => {
+    const response = await api.get<ToolDefinition[]>('/tool-definitions', { params });
+    return response.data;
+};
+
+export const createToolDefinition = async (data: any) => {
+    const response = await api.post<ToolDefinition>('/tool-definitions', data);
+    return response.data;
+};
+
+export const updateToolDefinition = async (toolId: string, data: any) => {
+    const response = await api.put<ToolDefinition>(`/tool-definitions/${toolId}`, data);
+    return response.data;
+};
+
+export const getToolDefinition = async (toolId: string) => {
+    const response = await api.get<ToolDefinition>(`/tool-definitions/${toolId}`);
+    return response.data;
+};
+
+export const getToolInstances = async (params?: {
+    project_id?: string;
+    tool_definition_id?: string;
+    status?: string;
+}) => {
+    const response = await api.get<ToolInstance[]>('/tool-instances', { params });
+    return response.data;
+};
+
+export const createToolInstance = async (data: any) => {
+    const response = await api.post<ToolInstance>('/tool-instances', data);
+    return response.data;
+};
+
+export const executeTool = async (data: {
+    tool_instance_id: string;
+    parameters: any;
+}) => {
+    const response = await api.post('/tool-instances/execute', data);
+    return response.data;
+};
+
+export const initializePresetTools = async () => {
+    const response = await api.post('/tool-definitions/initialize-presets');
+    return response.data;
+};
+
+// 集成配置接口
+export interface IntegrationConfig {
+    id: string;
+    project_id?: string;
+    integration_type: string;
+    name: string;
+    config?: any;
+    status: string;
+    field_mappings?: any;
+    created_at: string;
+    updated_at: string;
+}
+
+export const getIntegrationConfigs = async (params?: {
+    project_id?: string;
+    integration_type?: string;
+}) => {
+    const response = await api.get<IntegrationConfig[]>('/integration-configs', { params });
+    return response.data;
+};
+
+export const createIntegrationConfig = async (data: any) => {
+    const response = await api.post<IntegrationConfig>('/integration-configs', data);
+    return response.data;
+};
+
+export const updateIntegrationConfig = async (configId: string, data: any) => {
+    const response = await api.put<IntegrationConfig>(`/integration-configs/${configId}`, data);
+    return response.data;
+};
+
+export const syncJira = async (configId: string, data: any) => {
+    const response = await api.post(`/integration-configs/${configId}/sync/jira`, data);
+    return response.data;
+};
+
+export const syncFeishu = async (configId: string, data: any) => {
+    const response = await api.post(`/integration-configs/${configId}/sync/feishu`, data);
+    return response.data;
+};
+
+// 报告接口
+export interface ReportTemplate {
+    id: string;
+    name: string;
+    template_type: string;
+    config?: any;
+    is_public: boolean;
+    created_at: string;
+}
+
+export interface ReportRecord {
+    id: string;
+    project_id?: string;
+    name: string;
+    report_type: string;
+    template_id?: string;
+    execution_run_id?: string;
+    content?: string;
+    content_json?: any;
+    file_url?: string;
+    start_date?: string;
+    end_date?: string;
+    created_at: string;
+}
+
+export const getReportTemplates = async (template_type?: string) => {
+    const params = template_type ? { template_type } : {};
+    const response = await api.get<ReportTemplate[]>('/report-templates', { params });
+    return response.data;
+};
+
+export const createReportTemplate = async (data: any) => {
+    const response = await api.post<ReportTemplate>('/report-templates', data);
+    return response.data;
+};
+
+export const getReportRecords = async (params?: {
+    project_id?: string;
+    report_type?: string;
+}) => {
+    const response = await api.get<ReportRecord[]>('/report-records', { params });
+    return response.data;
+};
+
+export const createReportRecord = async (projectId?: string, data?: any) => {
+    const params = projectId ? { project_id: projectId } : {};
+    const response = await api.post<ReportRecord>('/report-records', data, { params });
+    return response.data;
+};
+
+export const generateDailyReport = async (projectId: string, date?: string) => {
+    const params = date ? { date } : {};
+    const response = await api.post(`/report-records/generate/daily`, null, { params: { project_id: projectId, ...params } });
+    return response.data;
+};
+
+export const generateWeeklyReport = async (projectId: string, startDate?: string) => {
+    const params = startDate ? { start_date: startDate } : {};
+    const response = await api.post(`/report-records/generate/weekly`, null, { params: { project_id: projectId, ...params } });
+    return response.data;
+};
+
+// 版本/迭代接口
+export interface VersionIteration {
+    id: string;
+    project_id: string;
+    name: string;
+    version?: string;
+    iteration_type: string;
+    description?: string;
+    status: string;
+    start_date?: string;
+    end_date?: string;
+    total_cases?: number;
+    passed_cases?: number;
+    created_at: string;
+}
+
+export const getVersionIterations = async (params?: {
+    project_id?: string;
+    iteration_type?: string;
+    status?: string;
+}) => {
+    const response = await api.get<VersionIteration[]>('/version-iterations', { params });
+    return response.data;
+};
+
+export const createVersionIteration = async (projectId: string, data: any) => {
+    const response = await api.post<VersionIteration>('/version-iterations', data, { params: { project_id: projectId } });
+    return response.data;
+};
+
+export const updateVersionIteration = async (iterationId: string, data: any) => {
+    const response = await api.put<VersionIteration>(`/version-iterations/${iterationId}`, data);
+    return response.data;
+};
+
+export const getVersionIteration = async (iterationId: string) => {
+    const response = await api.get<VersionIteration>(`/version-iterations/${iterationId}`);
+    return response.data;
 };

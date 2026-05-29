@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Table, Button, Modal, Form, Input, Select, Tag, message, Space, Typography, Popconfirm, Card, Row, Col, Statistic, Tooltip, Tabs, Tree } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, RobotOutlined, CheckCircleOutlined, ArrowLeftOutlined, UnorderedListOutlined, PartitionOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, RobotOutlined, CheckCircleOutlined, ArrowLeftOutlined, UnorderedListOutlined, PartitionOutlined, CheckOutlined } from '@ant-design/icons';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { getProject, getProjects, getRequirements, getTestCases, createTestCase, updateTestCase, deleteTestCase, generateTestCasesV2, adoptTestCase, enableTestCase, Requirement, TestCase, Project } from '../api';
 
@@ -8,14 +8,14 @@ const { Title } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
 
-export const TestCaseManagement: React.FC = () => {
+export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ embeddedProjectId }) => {
   const location = useLocation();
   const navigate = useNavigate();
   // Get projectId from URL search params if exists
   const queryParams = new URLSearchParams(location.search);
   const initialProjectId = queryParams.get('project_id') || undefined;
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(initialProjectId);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(embeddedProjectId || initialProjectId);
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<any>(null);
   
@@ -27,6 +27,10 @@ export const TestCaseManagement: React.FC = () => {
   const [viewMode, setViewMode] = useState<'table' | 'tree'>('table');
   const [generateMode, setGenerateMode] = useState<'req' | 'text'>('req');
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [featureFilter, setFeatureFilter] = useState<string | undefined>(undefined);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const [generateForm] = Form.useForm();
@@ -149,7 +153,8 @@ export const TestCaseManagement: React.FC = () => {
     }
     
     try {
-      const payload: any = {};
+      setIsGenerating(true);
+      const payload: any = { feature: values.feature };
       if (generateMode === 'req') {
         payload.requirement_id = values.requirement_id;
       } else {
@@ -157,12 +162,50 @@ export const TestCaseManagement: React.FC = () => {
       }
       
       await generateTestCasesV2(selectedProjectId, payload);
-      message.success('测试用例生成中...');
+      message.success('测试用例生成成功');
       setIsGenerateModalOpen(false);
       generateForm.resetFields();
-      setTimeout(fetchData, 1500);
+      setTimeout(fetchData, 500);
     } catch (error) {
       message.error('生成用例失败');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleBatchAdopt = async () => {
+    const candidates = testCases.filter(c => c.status === 'candidate');
+    if (candidates.length === 0) {
+      message.info('没有需要采纳的候选用例');
+      return;
+    }
+    const hide = message.loading(`正在采纳 ${candidates.length} 个用例...`, 0);
+    try {
+      await Promise.all(candidates.map(c => adoptTestCase(c.id)));
+      message.success(`成功采纳 ${candidates.length} 个用例`);
+      fetchData();
+    } catch (error) {
+      message.error('批量采纳失败');
+    } finally {
+      hide();
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要删除的用例');
+      return;
+    }
+    const hide = message.loading(`正在删除 ${selectedRowKeys.length} 个用例...`, 0);
+    try {
+      await Promise.all(selectedRowKeys.map(key => deleteTestCase(key as string)));
+      message.success(`成功删除 ${selectedRowKeys.length} 个用例`);
+      setSelectedRowKeys([]);
+      fetchData();
+    } catch (error) {
+      message.error('批量删除失败');
+    } finally {
+      hide();
     }
   };
 
@@ -175,11 +218,17 @@ export const TestCaseManagement: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
-  const columns = [
+  const uniqueFeatures = useMemo(() => {
+    const features = testCases.map(c => c.feature).filter(Boolean);
+    return Array.from(new Set(features));
+  }, [testCases]);
+
+  const columns: any[] = [
     {
       title: '用例标题',
       dataIndex: 'title',
       key: 'title',
+      sorter: (a: TestCase, b: TestCase) => a.title.localeCompare(b.title),
       render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
     },
     {
@@ -193,39 +242,66 @@ export const TestCaseManagement: React.FC = () => {
       title: '关联需求',
       dataIndex: 'requirement_id',
       key: 'requirement_id',
+      filters: requirements.map(r => ({ text: r.title, value: r.id })),
+      onFilter: (value: any, record: TestCase) => record.requirement_id === value,
       render: (reqId: string) => {
         const req = requirements.find(r => r.id === reqId);
         return req ? <Tag color="blue">{req.title}</Tag> : '-';
       },
     },
     {
-      title: 'Feature',
+      title: '功能模块',
       dataIndex: 'feature',
       key: 'feature',
+      filters: uniqueFeatures.map(f => ({ text: f, value: f })),
+      onFilter: (value: any, record: TestCase) => record.feature === value,
       render: (text: string) => text ? <Tag color="purple">{text}</Tag> : '-',
     },
     {
       title: '类型',
       dataIndex: 'case_category',
       key: 'case_category',
+      filters: [
+        { text: '手工', value: 'manual' },
+        { text: '自动化', value: 'automated' },
+      ],
+      onFilter: (value: any, record: TestCase) => record.case_category === value,
       render: (text: string) => <Tag>{text === 'manual' ? '手工' : '自动化'}</Tag>,
     },
     {
       title: '优先级',
       dataIndex: 'priority',
       key: 'priority',
+      filters: [
+        { text: 'P0', value: 'P0' },
+        { text: 'P1', value: 'P1' },
+        { text: 'P2', value: 'P2' },
+        { text: 'P3', value: 'P3' },
+      ],
+      onFilter: (value: any, record: TestCase) => record.priority === value,
+      sorter: (a: TestCase, b: TestCase) => {
+        const order: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
+        return (order[a.priority] ?? 99) - (order[b.priority] ?? 99);
+      },
       render: getPriorityTag,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
+      filters: [
+        { text: '候选', value: 'candidate' },
+        { text: '已采纳', value: 'adopted' },
+        { text: '已启用', value: 'enabled' },
+      ],
+      onFilter: (value: any, record: TestCase) => record.status === value,
       render: getStatusTag,
     },
     {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      sorter: (a: TestCase, b: TestCase) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       render: (text: string) => new Date(text).toLocaleString(),
     },
     {
@@ -332,33 +408,63 @@ export const TestCaseManagement: React.FC = () => {
     return { total, candidate, adopted, enabled };
   }, [testCases]);
 
+  const filteredTestCases = useMemo(() => {
+    if (!featureFilter) return testCases;
+    return testCases.filter(c => c.feature === featureFilter);
+  }, [testCases, featureFilter]);
+
   return (
     <div>
-      <Space style={{ marginBottom: 24 }}>
-        <Select 
-          placeholder="选择项目查看" 
-          style={{ width: 240 }} 
-          value={selectedProjectId} 
-          onChange={handleProjectChange}
-          allowClear
-        >
-          {projects.map(p => (
-            <Option key={p.id} value={p.id}>{p.name}</Option>
-          ))}
-        </Select>
-        {selectedProjectId && (
-          <Link to={`/projects/${selectedProjectId}`}>
-            <Button icon={<ArrowLeftOutlined />}>进入项目详情</Button>
-          </Link>
-        )}
-      </Space>
+      {!embeddedProjectId && (
+        <Space style={{ marginBottom: 24 }}>
+          <Select 
+            placeholder="选择项目查看" 
+            style={{ width: 240 }} 
+            value={selectedProjectId} 
+            onChange={handleProjectChange}
+            allowClear
+          >
+            {projects.map(p => (
+              <Option key={p.id} value={p.id}>{p.name}</Option>
+            ))}
+          </Select>
+          {selectedProjectId && (
+            <Link to={`/projects/${selectedProjectId}`}>
+              <Button icon={<ArrowLeftOutlined />}>进入项目详情</Button>
+            </Link>
+          )}
+        </Space>
+      )}
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div>
-          <Title level={2} style={{ margin: 0 }}>全局用例管理</Title>
-          {project && <span style={{ color: '#666' }}>当前筛选项目: {project.name}</span>}
-        </div>
+        {!embeddedProjectId ? (
+          <div>
+            <Title level={2} style={{ margin: 0 }}>全局用例管理</Title>
+            {project && <span style={{ color: '#666' }}>当前筛选项目: {project.name}</span>}
+          </div>
+        ) : <div />}
         <Space>
+          {selectedRowKeys.length > 0 && (
+            <Popconfirm
+              title={`确定要删除选中的 ${selectedRowKeys.length} 个用例吗？`}
+              onConfirm={handleBatchDelete}
+              okText="删除"
+              cancelText="取消"
+            >
+              <Button danger icon={<DeleteOutlined />}>
+                一键删除
+              </Button>
+            </Popconfirm>
+          )}
+          <Button 
+            type="primary"
+            ghost
+            icon={<CheckOutlined />} 
+            onClick={handleBatchAdopt}
+            disabled={!selectedProjectId || !testCases.some(c => c.status === 'candidate')}
+          >
+            一键采纳
+          </Button>
           <Button 
             type="default" 
             icon={<RobotOutlined />} 
@@ -408,6 +514,21 @@ export const TestCaseManagement: React.FC = () => {
             </Col>
           </Row>
 
+          <div style={{ marginBottom: 16 }}>
+            <span style={{ marginRight: 8 }}>筛选功能模块:</span>
+            <Select 
+              style={{ width: 200 }} 
+              placeholder="全部模块" 
+              allowClear 
+              value={featureFilter}
+              onChange={(val) => setFeatureFilter(val)}
+            >
+              {uniqueFeatures.map(f => (
+                <Select.Option key={f} value={f}>{f}</Select.Option>
+              ))}
+            </Select>
+          </div>
+
           <Tabs 
             activeKey={viewMode} 
             onChange={(k) => setViewMode(k as any)}
@@ -417,14 +538,22 @@ export const TestCaseManagement: React.FC = () => {
                 label: <span><UnorderedListOutlined /> 列表视图</span>,
                 children: (
                   <Table
-                    dataSource={testCases}
+                    rowSelection={{
+                      selectedRowKeys,
+                      onChange: (newSelectedRowKeys) => setSelectedRowKeys(newSelectedRowKeys),
+                    }}
+                    dataSource={filteredTestCases}
                     columns={columns}
                     rowKey="id"
                     loading={loading}
                     pagination={{
-                      pageSize: 20,
+                      current: pagination.current,
+                      pageSize: pagination.pageSize,
                       showSizeChanger: true,
                       showTotal: (total) => `共 ${total} 条`,
+                      onChange: (page, pageSize) => {
+                        setPagination({ current: page, pageSize });
+                      }
                     }}
                   />
                 )
@@ -493,9 +622,10 @@ export const TestCaseManagement: React.FC = () => {
 
           <Form.Item
             name="feature"
-            label="Feature"
+            label="功能模块"
+            rules={[{ required: true, message: '请输入功能模块' }]}
           >
-            <Input placeholder="关联功能模块或Feature" />
+            <Input placeholder="关联功能模块" />
           </Form.Item>
 
           <Form.Item
@@ -584,9 +714,10 @@ export const TestCaseManagement: React.FC = () => {
 
           <Form.Item
             name="feature"
-            label="Feature"
+            label="功能模块"
+            rules={[{ required: true, message: '请输入功能模块' }]}
           >
-            <Input placeholder="关联功能模块或Feature" />
+            <Input placeholder="关联功能模块" />
           </Form.Item>
 
           <Form.Item
@@ -649,20 +780,22 @@ export const TestCaseManagement: React.FC = () => {
           generateForm.resetFields();
         }}
         onOk={() => generateForm.submit()}
+        confirmLoading={isGenerating}
         width={700}
       >
-        <Tabs 
-          activeKey={generateMode} 
-          onChange={(k) => setGenerateMode(k as any)}
-          items={[
-            {
-              key: 'req',
-              label: '基于已有需求生成',
-              children: (
-                <Form form={generateForm} layout="vertical" onFinish={handleGenerateCases}>
+        <Form form={generateForm} layout="vertical" onFinish={handleGenerateCases}>
+          <Tabs 
+            activeKey={generateMode} 
+            onChange={(k) => setGenerateMode(k as any)}
+            items={[
+              {
+                key: 'req',
+                label: '基于已有需求生成',
+                children: (
                   <Form.Item
                     name="requirement_id"
                     label="选择需求"
+                    rules={generateMode === 'req' ? [{ required: true, message: '请选择需求' }] : []}
                   >
                     <Select placeholder="选择一个需求来生成用例">
                       {requirements.map(req => (
@@ -670,28 +803,34 @@ export const TestCaseManagement: React.FC = () => {
                       ))}
                     </Select>
                   </Form.Item>
-                </Form>
-              )
-            },
-            {
-              key: 'text',
-              label: '基于文本/文档生成',
-              children: (
-                <Form form={generateForm} layout="vertical" onFinish={handleGenerateCases}>
+                )
+              },
+              {
+                key: 'text',
+                label: '基于文本/文档生成',
+                children: (
                   <Form.Item
                     name="content"
                     label="需求描述 / 业务逻辑 / PRD内容"
+                    rules={generateMode === 'text' ? [{ required: true, message: '请输入内容' }] : []}
                   >
                     <TextArea 
                       rows={8} 
                       placeholder="在这里粘贴任何业务描述、需求文档内容、或者接口逻辑，AI会自动为您梳理出测试点并生成结构化测试用例。" 
                     />
                   </Form.Item>
-                </Form>
-              )
-            }
-          ]}
-        />
+                )
+              }
+            ]}
+          />
+          <Form.Item
+            name="feature"
+            label="功能模块"
+            rules={[{ required: true, message: '请指定功能模块' }]}
+          >
+            <Input placeholder="输入此批用例所属的功能模块 (如: 登录、支付)" />
+          </Form.Item>
+        </Form>
         <div style={{ color: '#666', fontSize: '13px', marginTop: 16, padding: '12px', background: '#f5f5f5', borderRadius: 4 }}>
           <p style={{ margin: '0 0 8px 0' }}>💡 <strong>AI 生成说明：</strong></p>
           <p style={{ margin: '0 0 4px 0' }}>• AI 会分析业务逻辑，自动生成 <strong>自动化测试</strong> 和 <strong>手工测试</strong> 用例</p>

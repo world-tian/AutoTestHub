@@ -93,19 +93,38 @@ export const ReportDetail: React.FC = () => {
     return <Tag color={colors[status] || 'default'}>{labels[status] || status}</Tag>;
   };
 
+  const getSafeHtmlReport = (html?: string) => {
+    if (!html) return '';
+    // 阻止 pytest-html 尝试修改 about:srcdoc 的 history 导致崩溃
+    return html.replace(/window\.history\.pushState/g, 'console.debug');
+  };
+
   const resultColumns = [
     {
       title: '测试用例',
       dataIndex: 'case_title',
       key: 'case_title',
-      render: (text: string, record: any) => text || record.test_case_id
+      render: (text: string, record: any) => {
+        // 如果是从 Python 脚本返回的原始 pytest 报告名称，尝试展示
+        if (record.test_case_id === 'virtual-case-for-plan') {
+          // 尝试从日志或结果中提取实际测试文件
+          const match = record.log_url?.match(/tests\/[a-zA-Z0-9_/.-]+::[a-zA-Z0-9_]+/);
+          if (match) return match[0];
+        }
+        return text || record.test_case_id;
+      }
     },
     {
       title: '用例说明',
       dataIndex: 'case_description',
       key: 'case_description',
       ellipsis: true,
-      render: (text: string) => text || '-'
+      render: (text: string, record: any) => {
+        if (record.test_case_id === 'virtual-case-for-plan') {
+           return "由命令行计划触发的自动化执行记录";
+        }
+        return text || '-';
+      }
     },
     {
       title: '状态',
@@ -219,52 +238,61 @@ export const ReportDetail: React.FC = () => {
 
         <Divider />
 
-        <Tabs defaultActiveKey="results">
-          <Tabs.TabPane tab={<span><FileTextOutlined />执行结果</span>} key="results">
-            <Card title="执行用例列表">
-              <Table
-                dataSource={results}
-                columns={resultColumns}
-                rowKey="id"
-                pagination={{
-                  defaultPageSize: 20,
-                  showSizeChanger: true,
-                  showTotal: (total) => `共 ${total} 条结果`
-                }}
-                expandable={{
-                  expandedRowRender: (record) => (
-                    <div style={{ margin: 0 }}>
-                      <Title level={5}>执行日志</Title>
-                      <pre style={{ 
-                        background: '#1e1e1e', 
-                        color: '#a9b7c6', 
-                        padding: '16px', 
-                        borderRadius: '8px', 
-                        whiteSpace: 'pre-wrap',
-                        maxHeight: '400px',
-                        overflowY: 'auto',
-                        fontFamily: 'monospace'
-                      }}>
-                        {record.log_url || record.error_message || '无日志输出'}
-                      </pre>
-                    </div>
-                  ),
-                }}
-              />
-            </Card>
-          </Tabs.TabPane>
-          {results.some(r => r.html_report) && (
-            <Tabs.TabPane tab={<span><Html5Outlined />原生日志报告</span>} key="html_report">
-              <Card>
-                <iframe
-                  title="HTML Report"
-                  srcDoc={results.find(r => r.html_report)?.html_report}
-                  style={{ width: '100%', height: 'calc(100vh - 250px)', minHeight: '800px', border: 'none' }}
-                />
-              </Card>
-            </Tabs.TabPane>
-          )}
-        </Tabs>
+        <Tabs 
+          defaultActiveKey="results"
+          items={[
+            {
+              key: 'results',
+              label: <span><FileTextOutlined />执行结果</span>,
+              children: (
+                <Card title="执行用例列表">
+                  <Table
+                    dataSource={results}
+                    columns={resultColumns}
+                    rowKey="id"
+                    pagination={{
+                      defaultPageSize: 20,
+                      showSizeChanger: true,
+                      showTotal: (total) => `共 ${total} 条结果`
+                    }}
+                    expandable={{
+                      expandedRowRender: (record) => (
+                        <div style={{ margin: 0 }}>
+                          <Title level={5}>执行日志</Title>
+                          <pre style={{ 
+                            background: '#1e1e1e', 
+                            color: '#a9b7c6', 
+                            padding: '16px', 
+                            borderRadius: '8px', 
+                            whiteSpace: 'pre-wrap',
+                            maxHeight: '400px',
+                            overflowY: 'auto',
+                            fontFamily: 'monospace'
+                          }}>
+                            {record.log_url || record.error_message || '无日志输出'}
+                          </pre>
+                        </div>
+                      ),
+                    }}
+                  />
+                </Card>
+              )
+            },
+            ...(results.some(r => r.html_report) ? [{
+              key: 'html_report',
+              label: <span><Html5Outlined />原生日志报告</span>,
+              children: (
+                 <Card>
+                   <iframe
+                     title="原生测试报告"
+                     srcDoc={getSafeHtmlReport(results.find(r => r.html_report)?.html_report)}
+                     style={{ width: '100%', height: 'calc(100vh - 250px)', minHeight: '800px', border: 'none' }}
+                   />
+                 </Card>
+               )
+            }] : [])
+          ]}
+        />
       </Spin>
     </div>
   );

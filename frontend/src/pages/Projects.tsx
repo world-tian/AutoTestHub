@@ -29,6 +29,7 @@ export const Projects: React.FC = () => {
       title: '项目名称',
       dataIndex: 'name',
       key: 'name',
+      sorter: (a: any, b: any) => a.name.localeCompare(b.name),
       render: (text: string, record: any) => <Link to={`/projects/${record.id}`}>{text}</Link>,
     },
     {
@@ -40,6 +41,7 @@ export const Projects: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      sorter: (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       render: (text: string) => new Date(text).toLocaleString(),
     },
   ];
@@ -61,10 +63,10 @@ export const Projects: React.FC = () => {
             <Input.TextArea rows={4} placeholder="项目说明..." />
           </Form.Item>
           <Form.Item name="working_dir" label="默认工作目录 (可选)">
-            <Input placeholder="例如：/Users/bytedance/Documents/AutoTestRunner" />
+            <Input placeholder="例如：/path/to/your/workspace 或相对路径" />
           </Form.Item>
           <Form.Item name="test_command" label="默认执行命令 (可选)">
-            <Input placeholder="例如：pytest tests/" />
+            <Input placeholder="例如：python3 -m autotest_runner run -plan examples/plan.yaml" />
           </Form.Item>
         </Form>
       </Modal>

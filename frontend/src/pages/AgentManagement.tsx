@@ -120,6 +120,12 @@ const AgentManagement: React.FC = () => {
             title: '状态',
             key: 'status',
             width: 80,
+            filters: [
+                { text: '在线', value: 'online' },
+                { text: '离线', value: 'offline' },
+                { text: '忙碌', value: 'busy' },
+            ],
+            onFilter: (value: any, record: Agent) => record.status === value,
             render: (_: any, record: Agent) => (
                 <Tag color={getStatusColor(record.status)} icon={getStatusIcon(record.status)}>
                     {record.status === 'online' ? '在线' : record.status === 'offline' ? '离线' : '忙碌'}
@@ -130,6 +136,7 @@ const AgentManagement: React.FC = () => {
             title: 'Agent 名称',
             dataIndex: 'name',
             key: 'name',
+            sorter: (a: Agent, b: Agent) => a.name.localeCompare(b.name),
             render: (text: string, record: Agent) => (
                 <Space>
                     <DesktopOutlined />
@@ -143,25 +150,30 @@ const AgentManagement: React.FC = () => {
             title: '主机',
             dataIndex: 'host',
             key: 'host',
+            sorter: (a: Agent, b: Agent) => (a.host || '').localeCompare(b.host || ''),
         },
         {
             title: '操作系统',
             dataIndex: 'os',
             key: 'os',
+            sorter: (a: Agent, b: Agent) => (a.os || '').localeCompare(b.os || ''),
         },
         {
             title: 'CPU 核数',
             dataIndex: 'cpu_cores',
             key: 'cpu_cores',
+            sorter: (a: Agent, b: Agent) => (a.cpu_cores || 0) - (b.cpu_cores || 0),
         },
         {
             title: '内存',
             dataIndex: 'memory',
             key: 'memory',
+            sorter: (a: Agent, b: Agent) => (a.memory || '').localeCompare(b.memory || ''),
         },
         {
             title: '健康度',
             key: 'health_score',
+            sorter: (a: Agent, b: Agent) => (a.health_score || 0) - (b.health_score || 0),
             render: (_: any, record: Agent) => {
                 if (record.health_score === undefined) return '-';
                 const score = record.health_score;
@@ -174,6 +186,7 @@ const AgentManagement: React.FC = () => {
         {
             title: '最后心跳',
             key: 'last_heartbeat',
+            sorter: (a: Agent, b: Agent) => new Date(a.last_heartbeat || 0).getTime() - new Date(b.last_heartbeat || 0).getTime(),
             render: (_: any, record: Agent) => {
                 if (!record.last_heartbeat) return '-';
                 // 后端返回的是 UTC 时间（如 2024-05-29T02:00:00），如果它没有带 Z，浏览器会解析成本地时间

@@ -259,7 +259,7 @@ export const ReportDetail: React.FC = () => {
                 <iframe
                   title="HTML Report"
                   srcDoc={results.find(r => r.html_report)?.html_report}
-                  style={{ width: '100%', height: '800px', border: 'none' }}
+                  style={{ width: '100%', height: 'calc(100vh - 250px)', minHeight: '800px', border: 'none' }}
                 />
               </Card>
             </Tabs.TabPane>

@@ -479,3 +479,8 @@ export const triggerExecution = async (projectId: string, request: TriggerExecut
     return response.data;
 };
 
+
+export const deleteExecutionRun = async (runId: string) => {
+  const response = await api.delete(`/execution-runs/${runId}`);
+  return response.data;
+};

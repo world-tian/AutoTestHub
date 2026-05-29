@@ -10,7 +10,7 @@ import {
   generateTestCases, adoptTestCase, enableTestCase, Requirement, TestCase, ExecutionRun,
   getAgents, getScheduledTasks, createScheduledTask, updateScheduledTask, deleteScheduledTask,
   triggerScheduledTask, triggerExecution, Agent, ScheduledTask, importJiraRequirements,
-  getTestPlans, createTestPlan, deleteTestPlan, TestPlan
+  getTestPlans, createTestPlan, deleteTestPlan, TestPlan, deleteExecutionRun
 } from '../api';
 
 const { Title } = Typography;
@@ -38,6 +38,7 @@ export const ProjectDetail: React.FC = () => {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
   const [testPlans, setTestPlans] = useState<TestPlan[]>([]);
+  const sortedTestPlans = useMemo(() => [...testPlans].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [testPlans]);
 
   const [isReqModalOpen, setIsReqModalOpen] = useState(false);
   const [isJiraModalOpen, setIsJiraModalOpen] = useState(false);
@@ -122,6 +123,22 @@ export const ProjectDetail: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+    const handleDeleteRun = async (id: string) => {
+    Modal.confirm({
+      title: '确定要删除该执行报告吗？',
+      content: '删除后无法恢复。',
+      onOk: async () => {
+        try {
+          await deleteExecutionRun(id);
+          message.success('报告已删除');
+          fetchData();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    });
   };
 
   const handleCreatePlan = async (values: any) => {
@@ -423,12 +440,15 @@ export const ProjectDetail: React.FC = () => {
   ];
 
   const runColumns = [
+    { title: 'ID', dataIndex: 'id', key: 'id', render: (text: string) => <span style={{ color: '#888', fontSize: '12px' }}>{text.slice(0, 8)}...</span> },
     { title: '执行名称', dataIndex: 'name', key: 'name', render: (text: string, record: ExecutionRun) => <Link to={`/runs/${record.id}`}>{text}</Link> },
     { title: '状态', dataIndex: 'status', key: 'status', render: getStatusTag },
     { title: '创建时间', dataIndex: 'created_at', key: 'created_at', render: (text: string) => text ? new Date(text.replace(' ', 'T').endsWith('Z') ? text.replace(' ', 'T') : text.replace(' ', 'T') + 'Z').toLocaleString() : '-' },
+    { title: '操作', key: 'action', render: (_: any, record: ExecutionRun) => <Button type="link" danger size="small" onClick={() => handleDeleteRun(record.id)}>删除</Button> },
   ];
 
   const planColumns = [
+    { title: 'ID', dataIndex: 'id', key: 'id', render: (text: string) => <span style={{ color: '#888', fontSize: '12px' }}>{text.slice(0, 8)}...</span> },
     { title: '计划名称', dataIndex: 'name', key: 'name' },
     { title: '描述', dataIndex: 'description', key: 'description' },
     { title: '环境', dataIndex: 'env', key: 'env', render: (text: string) => text ? <Tag color="blue">{text}</Tag> : '-' },
@@ -520,7 +540,7 @@ export const ProjectDetail: React.FC = () => {
             <Button type="primary" onClick={() => setIsPlanModalOpen(true)}>新建测试计划</Button>
           </div>
           <Table 
-            dataSource={testPlans} 
+            dataSource={sortedTestPlans} 
             columns={planColumns} 
             rowKey="id" 
             loading={loading}

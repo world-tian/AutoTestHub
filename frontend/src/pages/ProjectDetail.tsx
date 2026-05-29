@@ -56,6 +56,7 @@ export const ProjectDetail: React.FC = () => {
 
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [runSearchText, setRunSearchText] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterPriority, setFilterPriority] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('');
@@ -341,7 +342,7 @@ export const ProjectDetail: React.FC = () => {
   const reqColumns = [
     { title: '标题', dataIndex: 'title', key: 'title' },
     { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
-    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', render: (text: string) => text ? new Date(text.endsWith('Z') ? text : text + 'Z').toLocaleString() : '-' },
+    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', render: (text: string) => text ? new Date(text.replace(' ', 'T').endsWith('Z') ? text.replace(' ', 'T') : text.replace(' ', 'T') + 'Z').toLocaleString() : '-' },
     {
       title: '操作', key: 'action', render: (_: any, record: Requirement) => (
         <Space>
@@ -350,6 +351,8 @@ export const ProjectDetail: React.FC = () => {
       ),
     },
   ];
+
+  const filteredRuns = useMemo(() => runs.filter(run => run.name.toLowerCase().includes(runSearchText.toLowerCase())), [runs, runSearchText]);
 
   const filteredTestCases = useMemo(() => {
     return testCases.filter(item => {
@@ -399,7 +402,7 @@ export const ProjectDetail: React.FC = () => {
     { title: '类型', dataIndex: 'case_category', key: 'case_category', render: (text: string) => <Tag>{text === 'manual' ? '手工' : '自动化'}</Tag> },
     { title: '优先级', dataIndex: 'priority', key: 'priority', render: getPriorityTag },
     { title: '状态', dataIndex: 'status', key: 'status', render: getStatusTag },
-    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', render: (text: string) => text ? new Date(text.endsWith('Z') ? text : text + 'Z').toLocaleString() : '-' },
+    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', render: (text: string) => text ? new Date(text.replace(' ', 'T').endsWith('Z') ? text.replace(' ', 'T') : text.replace(' ', 'T') + 'Z').toLocaleString() : '-' },
     {
       title: '操作', key: 'action', render: (_: any, record: TestCase) => (
         <Space size="small">
@@ -422,14 +425,14 @@ export const ProjectDetail: React.FC = () => {
   const runColumns = [
     { title: '执行名称', dataIndex: 'name', key: 'name', render: (text: string, record: ExecutionRun) => <Link to={`/runs/${record.id}`}>{text}</Link> },
     { title: '状态', dataIndex: 'status', key: 'status', render: getStatusTag },
-    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', render: (text: string) => text ? new Date(text.endsWith('Z') ? text : text + 'Z').toLocaleString() : '-' },
+    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', render: (text: string) => text ? new Date(text.replace(' ', 'T').endsWith('Z') ? text.replace(' ', 'T') : text.replace(' ', 'T') + 'Z').toLocaleString() : '-' },
   ];
 
   const planColumns = [
     { title: '计划名称', dataIndex: 'name', key: 'name' },
     { title: '描述', dataIndex: 'description', key: 'description' },
     { title: '环境', dataIndex: 'env', key: 'env', render: (text: string) => text ? <Tag color="blue">{text}</Tag> : '-' },
-    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', render: (text: string) => text ? new Date(text.endsWith('Z') ? text : text + 'Z').toLocaleString() : '-' },
+    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', render: (text: string) => text ? new Date(text.replace(' ', 'T').endsWith('Z') ? text.replace(' ', 'T') : text.replace(' ', 'T') + 'Z').toLocaleString() : '-' },
     { 
       title: '最近执行状态', 
       key: 'latest_run_status', 
@@ -475,8 +478,8 @@ export const ProjectDetail: React.FC = () => {
     { title: '任务名称', dataIndex: 'name', key: 'name' },
     { title: 'Cron表达式', dataIndex: 'cron_expression', key: 'cron_expression' },
     { title: '状态', dataIndex: 'enabled', key: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'green' : 'default'}>{enabled ? '启用' : '禁用'}</Tag> },
-    { title: '上次运行', dataIndex: 'last_run_at', key: 'last_run_at', render: (text: string) => text ? new Date(text.endsWith('Z') ? text : text + 'Z').toLocaleString() : '-' },
-    { title: '下次运行', dataIndex: 'next_run_at', key: 'next_run_at', render: (text: string) => text ? new Date(text.endsWith('Z') ? text : text + 'Z').toLocaleString() : '-' },
+    { title: '上次运行', dataIndex: 'last_run_at', key: 'last_run_at', render: (text: string) => text ? new Date(text.replace(' ', 'T').endsWith('Z') ? text.replace(' ', 'T') : text.replace(' ', 'T') + 'Z').toLocaleString() : '-' },
+    { title: '下次运行', dataIndex: 'next_run_at', key: 'next_run_at', render: (text: string) => text ? new Date(text.replace(' ', 'T').endsWith('Z') ? text.replace(' ', 'T') : text.replace(' ', 'T') + 'Z').toLocaleString() : '-' },
     {
       title: '操作', key: 'action', render: (_: any, record: ScheduledTask) => (
         <Space size="small">
@@ -554,7 +557,7 @@ export const ProjectDetail: React.FC = () => {
                           title: '执行时间', 
                           dataIndex: 'created_at', 
                           key: 'created_at',
-                          render: (text: string) => text ? new Date(text.endsWith('Z') ? text : text + 'Z').toLocaleString() : '-'
+                          render: (text: string) => text ? new Date(text.replace(' ', 'T').endsWith('Z') ? text.replace(' ', 'T') : text.replace(' ', 'T') + 'Z').toLocaleString() : '-'
                         },
                         {
                           title: '操作',
@@ -617,14 +620,23 @@ export const ProjectDetail: React.FC = () => {
 
         <Tabs.TabPane tab="报告查询" key="3">
           <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-            <span>共 {runs.length} 份测试报告</span>
+            <Space>
+              <span>共 {filteredRuns.length} 份测试报告</span>
+              <Input.Search 
+                placeholder="搜索报告名称..." 
+                allowClear 
+                onSearch={setRunSearchText} 
+                onChange={(e) => setRunSearchText(e.target.value)}
+                style={{ width: 250 }} 
+              />
+            </Space>
             <Space>
               <Button type="primary" onClick={() => setIsTriggerModalOpen(true)} icon={<PlayCircleOutlined />}>
                 执行测试
               </Button>
             </Space>
           </div>
-          <Table dataSource={runs} columns={runColumns} rowKey="id" loading={loading} />
+          <Table dataSource={filteredRuns} columns={runColumns} rowKey="id" loading={loading} />
         </Tabs.TabPane>
 
         <Tabs.TabPane tab={<span><ClockCircleOutlined />定时任务</span>} key="4">

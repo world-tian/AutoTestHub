@@ -832,8 +832,8 @@ def trigger_execution_internal(
     # 2. 如果没有指定测试用例，尝试获取关联到测试计划的用例或所有启用用例
     # 这里暂时简化：如果没有传用例，我们至少塞一个假的用例或者允许空用例执行
     if not test_case_ids:
-        # 如果是指定了测试计划但没有匹配到用例，或者指定了自定义命令，则不自动加载所有用例
-        if not test_command and not test_plan_id:
+        # 只要指定了自定义命令（不管是不是测试计划），就不自动加载所有用例，而是使用虚拟用例承载执行日志
+        if not test_command:
             test_cases = db.query(TestCase).filter(
                 TestCase.project_id == project_id,
                 TestCase.status == "enabled"

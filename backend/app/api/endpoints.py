@@ -810,14 +810,16 @@ def trigger_execution_internal(
             if test_plan.case_ids:
                 test_case_ids = test_plan.case_ids
             else:
-                query = db.query(TestCase).filter(TestCase.project_id == project_id)
-                if test_plan.case_filters:
+                # 只有在没有自定义执行命令且没有配置任何用例过滤条件的情况下，才可能会回退到查所有用例。
+                # 但如果是通过自定义命令跑的，我们坚决不去查询所有用例。
+                if not test_command and test_plan.case_filters:
+                    query = db.query(TestCase).filter(TestCase.project_id == project_id)
                     if test_plan.case_filters.get('category'):
                         query = query.filter(TestCase.case_category == test_plan.case_filters['category'])
                     if test_plan.case_filters.get('feature'):
                         query = query.filter(TestCase.feature.in_(test_plan.case_filters['feature']))
-                test_cases = query.all()
-                test_case_ids = [tc.id for tc in test_cases]
+                    test_cases = query.all()
+                    test_case_ids = [tc.id for tc in test_cases]
     
     # 1. 创建 ExecutionRun
     run = ExecutionRun(

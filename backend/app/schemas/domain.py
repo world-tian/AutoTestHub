@@ -44,12 +44,15 @@ class RequirementBase(BaseModel):
     description: str
 
 class RequirementCreate(RequirementBase):
-    pass
+    external_id: Optional[str] = None
+    external_source: Optional[str] = None
 
 class RequirementResponse(RequirementBase):
     id: str
     project_id: str
     status: str
+    external_id: Optional[str] = None
+    external_source: Optional[str] = None
     created_at: datetime
     class Config:
         from_attributes = True
@@ -65,6 +68,8 @@ class TestCaseBase(BaseModel):
 class GenerateCasesRequest(BaseModel):
     requirement_id: Optional[str] = None
     content: Optional[str] = None
+    feature: Optional[str] = None
+
     project_id: str
 
 class TestCaseCreate(TestCaseBase):
@@ -87,7 +92,9 @@ class TestCaseResponse(TestCaseBase):
     requirement_id: Optional[str] = None
     local_case_id: Optional[str] = None
     status: str
+    version: int = 1
     created_at: datetime
+    updated_at: datetime
     class Config:
         from_attributes = True
 
@@ -95,12 +102,20 @@ class ExecutionRunBase(BaseModel):
     name: str
 
 class ExecutionRunCreate(ExecutionRunBase):
-    pass
+    test_plan_id: Optional[str] = None
+    agent_id: Optional[str] = None
+    device_id: Optional[str] = None
 
 class ExecutionRunResponse(ExecutionRunBase):
     id: str
     project_id: str
     status: str
+    test_plan_id: Optional[str] = None
+    agent_id: Optional[str] = None
+    device_id: Optional[str] = None
+    summary: Optional[Dict[str, Any]] = None
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
     created_at: datetime
     class Config:
         from_attributes = True
@@ -112,11 +127,18 @@ class ExecutionResultBase(BaseModel):
     log_url: Optional[str] = None
 
 class ExecutionResultCreate(ExecutionResultBase):
-    pass
+    artifacts: Optional[Dict[str, Any]] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration_ms: Optional[int] = None
 
 class ExecutionResultResponse(ExecutionResultBase):
     id: str
     run_id: str
+    artifacts: Optional[Dict[str, Any]] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration_ms: Optional[int] = None
     executed_at: datetime
     class Config:
         from_attributes = True
@@ -229,6 +251,8 @@ class TestPlanBase(BaseModel):
     case_filters: Optional[Dict[str, Any]] = None
     case_ids: Optional[List[str]] = None
     status: str = "active"
+    version: Optional[str] = None
+    iteration: Optional[str] = None
 
 class TestPlanCreate(TestPlanBase):
     pass
@@ -242,6 +266,8 @@ class TestPlanUpdate(BaseModel):
     case_filters: Optional[Dict[str, Any]] = None
     case_ids: Optional[List[str]] = None
     status: Optional[str] = None
+    version: Optional[str] = None
+    iteration: Optional[str] = None
 
 class TestPlanResponse(TestPlanBase):
     id: str
@@ -268,4 +294,246 @@ class TriggerExecutionRequest(BaseModel):
     test_case_ids: Optional[List[str]] = None
     working_dir: Optional[str] = None
     test_command: Optional[str] = None
+    test_plan_id: Optional[str] = None
+
+# ============== 新增：用例评审相关 Schema ==============
+class TestCaseReviewBase(BaseModel):
+    test_case_id: str
+    status: str = "pending"
+    comments: Optional[str] = None
+
+class TestCaseReviewCreate(TestCaseReviewBase):
+    pass
+
+class TestCaseReviewUpdate(BaseModel):
+    status: Optional[str] = None
+    comments: Optional[str] = None
+
+class TestCaseReviewResponse(TestCaseReviewBase):
+    id: str
+    project_id: str
+    reviewer_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# ============== 新增：缺陷管理相关 Schema ==============
+class DefectBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    severity: str = "medium"
+    status: str = "open"
+    priority: str = "P2"
+
+class DefectCreate(DefectBase):
+    test_case_id: Optional[str] = None
+    execution_result_id: Optional[str] = None
+    assigned_to: Optional[str] = None
+    external_id: Optional[str] = None
+    external_source: Optional[str] = None
+    external_url: Optional[str] = None
+
+class DefectUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    severity: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    assigned_to: Optional[str] = None
+    external_id: Optional[str] = None
+    external_url: Optional[str] = None
+
+class DefectResponse(DefectBase):
+    id: str
+    project_id: str
+    test_case_id: Optional[str] = None
+    execution_result_id: Optional[str] = None
+    created_by: Optional[str] = None
+    assigned_to: Optional[str] = None
+    external_id: Optional[str] = None
+    external_source: Optional[str] = None
+    external_url: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# ============== 新增：工具箱相关 Schema ==============
+class ToolDefinitionBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    tool_type: str
+    category: Optional[str] = None
+    config_schema: Optional[Dict[str, Any]] = None
+    code: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    is_public: bool = True
+    tags: Optional[List[str]] = None
+    capabilities: Optional[List[str]] = None
+
+class ToolDefinitionCreate(ToolDefinitionBase):
+    pass
+
+class ToolDefinitionUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    config_schema: Optional[Dict[str, Any]] = None
+    code: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    is_public: Optional[bool] = None
+    tags: Optional[List[str]] = None
+    capabilities: Optional[List[str]] = None
+
+class ToolDefinitionResponse(ToolDefinitionBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ToolInstanceBase(BaseModel):
+    tool_definition_id: str
+    name: str
+    project_id: Optional[str] = None
+    agent_id: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    status: str = "active"
+
+class ToolInstanceCreate(ToolInstanceBase):
+    pass
+
+class ToolInstanceUpdate(BaseModel):
+    name: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None
+
+class ToolInstanceResponse(ToolInstanceBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# ============== 新增：集成配置相关 Schema ==============
+class IntegrationConfigBase(BaseModel):
+    integration_type: str
+    name: str
+    config: Optional[Dict[str, Any]] = None
+    status: str = "active"
+    field_mappings: Optional[Dict[str, Any]] = None
+
+class IntegrationConfigCreate(IntegrationConfigBase):
+    project_id: Optional[str] = None
+
+class IntegrationConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None
+    field_mappings: Optional[Dict[str, Any]] = None
+
+class IntegrationConfigResponse(IntegrationConfigBase):
+    id: str
+    project_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# ============== 新增：报告相关 Schema ==============
+class ReportTemplateBase(BaseModel):
+    name: str
+    template_type: str = "execution"
+    config: Optional[Dict[str, Any]] = None
+    is_public: bool = True
+
+class ReportTemplateCreate(ReportTemplateBase):
+    pass
+
+class ReportTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    is_public: Optional[bool] = None
+
+class ReportTemplateResponse(ReportTemplateBase):
+    id: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ReportRecordBase(BaseModel):
+    name: str
+    report_type: str = "execution"
+    template_id: Optional[str] = None
+    execution_run_id: Optional[str] = None
+    content: Optional[str] = None
+    feature: Optional[str] = None
+
+    content_json: Optional[Dict[str, Any]] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+
+class ReportRecordCreate(ReportRecordBase):
+    pass
+
+class ReportRecordResponse(ReportRecordBase):
+    id: str
+    project_id: Optional[str] = None
+    file_url: Optional[str] = None
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# ============== 新增：版本/迭代相关 Schema ==============
+class VersionIterationBase(BaseModel):
+    name: str
+    iteration_type: str = "version"
+    description: Optional[str] = None
+    status: str = "planned"
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+
+class VersionIterationCreate(VersionIterationBase):
+    pass
+
+class VersionIterationUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+
+class VersionIterationResponse(VersionIterationBase):
+    id: str
+    project_id: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# ============== 新增：集成相关请求 ==============
+class JiraSyncRequest(BaseModel):
+    integration_config_id: str
+    jql: Optional[str] = None
+    project_key: Optional[str] = None
+    sync_type: str = "requirements"  # requirements, defects
+
+class FeishuSyncRequest(BaseModel):
+    integration_config_id: str
+    app_token: Optional[str] = None
+    table_id: Optional[str] = None
+    sync_type: str = "requirements"
+
+# ============== 新增：工具执行请求 ==============
+class ToolExecuteRequest(BaseModel):
+    tool_instance_id: str
+    parameters: Dict[str, Any]
 

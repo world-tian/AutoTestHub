@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 import json
+from app.services.ai_service_utils import extract_json_from_llm_response
+import re
 import httpx
 from app.core.config import settings
 
@@ -84,17 +86,21 @@ class OpenAIProvider(AIProvider):
             return response.json()["choices"][0]["message"]["content"]
     
     async def generate_test_cases(self, requirement_text: str) -> Dict[str, Any]:
-        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成结构化的测试用例。
-请以JSON格式返回，格式如下：
+        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成严格且合法的JSON格式的测试用例。
+必须确保输出的是纯JSON数据，不能包含任何markdown格式(如```json)，不能包含其他说明文字。
+JSON结构如下：
 {
     "cases": [
         {
             "title": "用例标题",
+            "feature": "功能模块名称(如: 登录、支付等，根据语义归纳)",
             "case_category": "manual|automated",
             "priority": "P0|P1|P2|P3",
             "steps": ["步骤1", "步骤2"],
             "expected_result": "预期结果"
         }
+    ]
+}
     ]
 }"""
         messages = [
@@ -102,21 +108,7 @@ class OpenAIProvider(AIProvider):
             {"role": "user", "content": f"请根据以下需求生成测试用例：\n{requirement_text}"}
         ]
         content = await self._call_api(messages, temperature=0.8)
-        try:
-            return json.loads(content)
-        except:
-            # 兜底返回
-            return {
-                "cases": [
-                    {
-                        "title": f"{requirement_text[:30]}...功能验证",
-                        "case_category": "manual",
-                        "priority": "P1",
-                        "steps": ["执行相关操作", "验证结果"],
-                        "expected_result": "功能正常"
-                    }
-                ]
-            }
+        return extract_json_from_llm_response(content)
     
     async def chat(self, messages: List[Dict[str, str]]) -> str:
         return await self._call_api(messages)
@@ -158,37 +150,28 @@ class ClaudeProvider(AIProvider):
             return response.json()["content"][0]["text"]
     
     async def generate_test_cases(self, requirement_text: str) -> Dict[str, Any]:
-        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成结构化的测试用例。
-请以JSON格式返回，格式如下：
+        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成严格且合法的JSON格式的测试用例。
+必须确保输出的是纯JSON数据，不能包含任何markdown格式(如```json)，不能包含其他说明文字。
+JSON结构如下：
 {
     "cases": [
         {
             "title": "用例标题",
+            "feature": "功能模块名称(如: 登录、支付等，根据语义归纳)",
             "case_category": "manual|automated",
             "priority": "P0|P1|P2|P3",
             "steps": ["步骤1", "步骤2"],
             "expected_result": "预期结果"
         }
     ]
+}
+    ]
 }"""
         messages = [
             {"role": "user", "content": f"{system_prompt}\n\n请根据以下需求生成测试用例：\n{requirement_text}"}
         ]
         content = await self._call_api(messages, temperature=0.8)
-        try:
-            return json.loads(content)
-        except:
-            return {
-                "cases": [
-                    {
-                        "title": f"{requirement_text[:30]}...功能验证",
-                        "case_category": "manual",
-                        "priority": "P1",
-                        "steps": ["执行相关操作", "验证结果"],
-                        "expected_result": "功能正常"
-                    }
-                ]
-            }
+        return extract_json_from_llm_response(content)
     
     async def chat(self, messages: List[Dict[str, str]]) -> str:
         return await self._call_api(messages)
@@ -224,17 +207,21 @@ class QwenProvider(AIProvider):
             return response.json()["choices"][0]["message"]["content"]
     
     async def generate_test_cases(self, requirement_text: str) -> Dict[str, Any]:
-        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成结构化的测试用例。
-请以JSON格式返回，格式如下：
+        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成严格且合法的JSON格式的测试用例。
+必须确保输出的是纯JSON数据，不能包含任何markdown格式(如```json)，不能包含其他说明文字。
+JSON结构如下：
 {
     "cases": [
         {
             "title": "用例标题",
+            "feature": "功能模块名称(如: 登录、支付等，根据语义归纳)",
             "case_category": "manual|automated",
             "priority": "P0|P1|P2|P3",
             "steps": ["步骤1", "步骤2"],
             "expected_result": "预期结果"
         }
+    ]
+}
     ]
 }"""
         messages = [
@@ -242,20 +229,7 @@ class QwenProvider(AIProvider):
             {"role": "user", "content": f"请根据以下需求生成测试用例：\n{requirement_text}"}
         ]
         content = await self._call_api(messages, temperature=0.8)
-        try:
-            return json.loads(content)
-        except:
-            return {
-                "cases": [
-                    {
-                        "title": f"{requirement_text[:30]}...功能验证",
-                        "case_category": "manual",
-                        "priority": "P1",
-                        "steps": ["执行相关操作", "验证结果"],
-                        "expected_result": "功能正常"
-                    }
-                ]
-            }
+        return extract_json_from_llm_response(content)
     
     async def chat(self, messages: List[Dict[str, str]]) -> str:
         return await self._call_api(messages)
@@ -300,37 +274,28 @@ class ErnieProvider(AIProvider):
             return response.json()["choices"][0]["message"]["content"]
     
     async def generate_test_cases(self, requirement_text: str) -> Dict[str, Any]:
-        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成结构化的测试用例。
-请以JSON格式返回，格式如下：
+        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成严格且合法的JSON格式的测试用例。
+必须确保输出的是纯JSON数据，不能包含任何markdown格式(如```json)，不能包含其他说明文字。
+JSON结构如下：
 {
     "cases": [
         {
             "title": "用例标题",
+            "feature": "功能模块名称(如: 登录、支付等，根据语义归纳)",
             "case_category": "manual|automated",
             "priority": "P0|P1|P2|P3",
             "steps": ["步骤1", "步骤2"],
             "expected_result": "预期结果"
         }
     ]
+}
+    ]
 }"""
         messages = [
             {"role": "user", "content": f"{system_prompt}\n\n请根据以下需求生成测试用例：\n{requirement_text}"}
         ]
         content = await self._call_api(messages, temperature=0.8)
-        try:
-            return json.loads(content)
-        except:
-            return {
-                "cases": [
-                    {
-                        "title": f"{requirement_text[:30]}...功能验证",
-                        "case_category": "manual",
-                        "priority": "P1",
-                        "steps": ["执行相关操作", "验证结果"],
-                        "expected_result": "功能正常"
-                    }
-                ]
-            }
+        return extract_json_from_llm_response(content)
     
     async def chat(self, messages: List[Dict[str, str]]) -> str:
         return await self._call_api(messages)
@@ -366,17 +331,21 @@ class DeepSeekProvider(AIProvider):
             return response.json()["choices"][0]["message"]["content"]
 
     async def generate_test_cases(self, requirement_text: str) -> Dict[str, Any]:
-        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成结构化的测试用例。
-请以JSON格式返回，格式如下：
+        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成严格且合法的JSON格式的测试用例。
+必须确保输出的是纯JSON数据，不能包含任何markdown格式(如```json)，不能包含其他说明文字。
+JSON结构如下：
 {
     "cases": [
         {
             "title": "用例标题",
+            "feature": "功能模块名称(如: 登录、支付等，根据语义归纳)",
             "case_category": "manual|automated",
             "priority": "P0|P1|P2|P3",
             "steps": ["步骤1", "步骤2"],
             "expected_result": "预期结果"
         }
+    ]
+}
     ]
 }"""
         messages = [
@@ -384,20 +353,7 @@ class DeepSeekProvider(AIProvider):
             {"role": "user", "content": f"请根据以下需求生成测试用例：\n{requirement_text}"}
         ]
         content = await self._call_api(messages, temperature=0.8)
-        try:
-            return json.loads(content)
-        except:
-            return {
-                "cases": [
-                    {
-                        "title": f"{requirement_text[:30]}...功能验证",
-                        "case_category": "manual",
-                        "priority": "P1",
-                        "steps": ["执行相关操作", "验证结果"],
-                        "expected_result": "功能正常"
-                    }
-                ]
-            }
+        return extract_json_from_llm_response(content)
 
     async def chat(self, messages: List[Dict[str, str]]) -> str:
         return await self._call_api(messages)
@@ -434,17 +390,21 @@ class KimiProvider(AIProvider):
             return response.json()["choices"][0]["message"]["content"]
 
     async def generate_test_cases(self, requirement_text: str) -> Dict[str, Any]:
-        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成结构化的测试用例。
-请以JSON格式返回，格式如下：
+        system_prompt = """你是一个专业的测试用例生成专家。根据需求描述，生成严格且合法的JSON格式的测试用例。
+必须确保输出的是纯JSON数据，不能包含任何markdown格式(如```json)，不能包含其他说明文字。
+JSON结构如下：
 {
     "cases": [
         {
             "title": "用例标题",
+            "feature": "功能模块名称(如: 登录、支付等，根据语义归纳)",
             "case_category": "manual|automated",
             "priority": "P0|P1|P2|P3",
             "steps": ["步骤1", "步骤2"],
             "expected_result": "预期结果"
         }
+    ]
+}
     ]
 }"""
         messages = [
@@ -452,20 +412,7 @@ class KimiProvider(AIProvider):
             {"role": "user", "content": f"请根据以下需求生成测试用例：\n{requirement_text}"}
         ]
         content = await self._call_api(messages, temperature=0.8)
-        try:
-            return json.loads(content)
-        except:
-            return {
-                "cases": [
-                    {
-                        "title": f"{requirement_text[:30]}...功能验证",
-                        "case_category": "manual",
-                        "priority": "P1",
-                        "steps": ["执行相关操作", "验证结果"],
-                        "expected_result": "功能正常"
-                    }
-                ]
-            }
+        return extract_json_from_llm_response(content)
 
     async def chat(self, messages: List[Dict[str, str]]) -> str:
         return await self._call_api(messages)

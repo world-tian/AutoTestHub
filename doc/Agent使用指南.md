@@ -33,10 +33,10 @@ pip install psutil requests  # Agent 需要的额外依赖
 
 ```bash
 # 方式 1: 基本启动
-python -m autotest_runner.agent.agent --server http://your-autotest-hub:8000 --name "My-Agent"
+python3 -m autotest_runner.agent.agent --server http://your-autotest-hub:8000 --name "My-Agent"
 
 # 方式 2: 自定义参数
-python -m autotest_runner.agent.agent \
+python3 -m autotest_runner.agent.agent \
   --server http://localhost:8000 \
   --name "Lab-Agent-01" \
   --interval 10
@@ -44,7 +44,7 @@ python -m autotest_runner.agent.agent \
 # 方式 3: 使用环境变量
 export AUTOTEST_SERVER=http://your-autotest-hub:8000
 export AGENT_TAGS=lab,ios,android
-python -m autotest_runner.agent.agent --name "Lab-Agent-01"
+python3 -m autotest_runner.agent.agent --name "Lab-Agent-01"
 ```
 
 ### 命令行参数
@@ -218,7 +218,7 @@ INFO: Starting AutoTest Agent...
 ```bash
 # 停止 Agent (Ctrl+C)
 # 重新启动
-python -m autotest_runner.agent.agent --server ... --name ...
+python3 -m autotest_runner.agent.agent --server ... --name ...
 ```
 
 ## 下一步

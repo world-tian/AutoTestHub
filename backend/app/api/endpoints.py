@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import shutil
+import os
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import croniter
 import random
 from app.database import get_db
-from app.models.domain import User, Project, Requirement, TestCase, ExecutionRun, ExecutionResult, Config, ScheduledTask, TestPlan
+from app.models.domain import *
 from app.schemas.domain import *
 from app.core.security import verify_password, create_access_token
 from app.services.ai_service import get_ai_provider, reset_ai_provider, PROVIDER_CONFIGS
@@ -159,6 +161,7 @@ async def generate_cases_new(project_id: str, request: GenerateCasesRequest, db:
             project_id=project_id,
             requirement_id=req.id if req else None,
             title=c["title"],
+            feature=request.feature if request.feature else c.get("feature", ""),
             case_category=c.get("case_category", "manual"),
             priority=c.get("priority", "P1"),
             steps=c.get("steps", []),
@@ -185,6 +188,7 @@ async def generate_cases(req_id: str, db: Session = Depends(get_db)):
             project_id=req.project_id,
             requirement_id=req.id,
             title=c["title"],
+            feature=c.get("feature", ""),
             case_category=c["case_category"],
             priority=c["priority"],
             steps=c["steps"],
@@ -374,9 +378,38 @@ def submit_result(run_id: str, result: ExecutionResultCreate, db: Session = Depe
     db.refresh(db_res)
     return db_res
 
+@router.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    # 确保上传目录存在
+    upload_dir = os.path.join(settings.BASE_DIR, "uploads") if hasattr(settings, "BASE_DIR") else "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    file_path = os.path.join(upload_dir, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    # 返回相对路径或可以访问的URL，这里简化为相对路径
+    return {"url": f"/uploads/{file.filename}", "filename": file.filename}
+
+@router.put("/execution-results/{result_id}", response_model=ExecutionResultResponse)
+def update_execution_result(result_id: str, result_update: ExecutionResultCreate, db: Session = Depends(get_db)):
+    db_res = db.query(ExecutionResult).filter(ExecutionResult.id == result_id).first()
+    if not db_res:
+        raise HTTPException(status_code=404, detail="Execution result not found")
+    update_data = result_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_res, key, value)
+    db.commit()
+    db.refresh(db_res)
+    return db_res
+
 @router.get("/projects/{project_id}/execution-runs", response_model=List[ExecutionRunResponse])
 def get_runs(project_id: str, db: Session = Depends(get_db)):
     return db.query(ExecutionRun).filter(ExecutionRun.project_id == project_id).all()
+
+@router.get("/execution-runs", response_model=List[ExecutionRunResponse])
+def get_all_runs(db: Session = Depends(get_db)):
+    return db.query(ExecutionRun).order_by(ExecutionRun.created_at.desc()).limit(100).all()
 
 @router.get("/execution-runs/{run_id}/results")
 def get_run_results(run_id: str, db: Session = Depends(get_db)):
@@ -385,7 +418,7 @@ def get_run_results(run_id: str, db: Session = Depends(get_db)):
     res_list = []
     for r in results:
         case_info = {"title": "整体计划执行", "description": "由测试计划触发的整体执行记录"}
-        if r.test_case_id != "virtual-case-for-plan":
+        if r.test_case_id and r.test_case_id != "virtual-case-for-plan":
             tc = db.query(TestCase).filter(TestCase.id == r.test_case_id).first()
             if tc:
                 case_info["title"] = tc.title
@@ -398,7 +431,7 @@ def get_run_results(run_id: str, db: Session = Depends(get_db)):
             "status": r.status,
             "error_message": r.error_message,
             "log_url": r.log_url,
-            "html_report": getattr(r, "html_report", None),
+            "html_report": r.html_report,
             "executed_at": r.executed_at,
             "case_title": case_info["title"],
             "case_description": case_info["description"]
@@ -623,7 +656,16 @@ def trigger_scheduled_task(task_id: str, db: Session = Depends(get_db)):
     config = task.config or {}
     agent_id = config.get("agent_id")
     device_id = config.get("device_id")
+    test_plan_id = config.get("test_plan_id")
     
+    working_dir = None
+    test_command = None
+    if test_plan_id:
+        test_plan = db.query(TestPlan).filter(TestPlan.id == test_plan_id).first()
+        if test_plan:
+            working_dir = test_plan.working_dir
+            test_command = test_plan.test_command
+
     result = trigger_execution_internal(
         db=db,
         project_id=task.project_id,
@@ -631,7 +673,9 @@ def trigger_scheduled_task(task_id: str, db: Session = Depends(get_db)):
         agent_id=agent_id,
         device_id=device_id,
         priority=0,
-        test_case_ids=config.get("test_case_ids")
+        test_case_ids=config.get("test_case_ids"),
+        working_dir=working_dir,
+        test_command=test_command
     )
     
     # 更新任务的最后运行时间
@@ -736,7 +780,8 @@ def trigger_execution(
         priority=request.priority,
         test_case_ids=request.test_case_ids,
         working_dir=request.working_dir,
-        test_command=request.test_command
+        test_command=request.test_command,
+        test_plan_id=request.test_plan_id
     )
 
 
@@ -750,7 +795,8 @@ def trigger_execution_internal(
     priority: int = 0,
     test_case_ids: Optional[List[str]] = None,
     working_dir: Optional[str] = None,
-    test_command: Optional[str] = None
+    test_command: Optional[str] = None,
+    test_plan_id: Optional[str] = None
 ):
     """内部函数：触发执行"""
     # 验证项目存在
@@ -758,11 +804,27 @@ def trigger_execution_internal(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
+    if test_plan_id and not test_case_ids:
+        test_plan = db.query(TestPlan).filter(TestPlan.id == test_plan_id).first()
+        if test_plan:
+            if test_plan.case_ids:
+                test_case_ids = test_plan.case_ids
+            else:
+                query = db.query(TestCase).filter(TestCase.project_id == project_id)
+                if test_plan.case_filters:
+                    if test_plan.case_filters.get('category'):
+                        query = query.filter(TestCase.case_category == test_plan.case_filters['category'])
+                    if test_plan.case_filters.get('feature'):
+                        query = query.filter(TestCase.feature.in_(test_plan.case_filters['feature']))
+                test_cases = query.all()
+                test_case_ids = [tc.id for tc in test_cases]
+    
     # 1. 创建 ExecutionRun
     run = ExecutionRun(
         project_id=project_id,
         name=name,
-        status="pending"
+        status="pending",
+        test_plan_id=test_plan_id
     )
     db.add(run)
     db.flush()  # 获取 run.id
@@ -770,11 +832,13 @@ def trigger_execution_internal(
     # 2. 如果没有指定测试用例，尝试获取关联到测试计划的用例或所有启用用例
     # 这里暂时简化：如果没有传用例，我们至少塞一个假的用例或者允许空用例执行
     if not test_case_ids:
-        test_cases = db.query(TestCase).filter(
-            TestCase.project_id == project_id,
-            TestCase.status == "enabled"
-        ).all()
-        test_case_ids = [tc.id for tc in test_cases]
+        # 如果是指定了测试计划但没有匹配到用例，或者指定了自定义命令，则不自动加载所有用例
+        if not test_command and not test_plan_id:
+            test_cases = db.query(TestCase).filter(
+                TestCase.project_id == project_id,
+                TestCase.status == "enabled"
+            ).all()
+            test_case_ids = [tc.id for tc in test_cases]
         
     # 如果没有用例，插入一个虚拟的执行结果以便能展示日志
     if not test_case_ids:
@@ -850,3 +914,208 @@ def calculate_next_run(cron_expression: str) -> datetime:
     cron = croniter.croniter(cron_expression, now)
     return cron.get_next(datetime)
 
+
+# ============== 用例评审 ==============
+@router.get("/test-case-reviews", response_model=List[TestCaseReviewResponse])
+def get_reviews(project_id: Optional[str] = None, test_case_id: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(TestCaseReview)
+    if project_id: query = query.filter(TestCaseReview.project_id == project_id)
+    if test_case_id: query = query.filter(TestCaseReview.test_case_id == test_case_id)
+    return query.all()
+
+@router.post("/test-case-reviews", response_model=TestCaseReviewResponse)
+def create_review(review: TestCaseReviewCreate, project_id: Optional[str] = None, db: Session = Depends(get_db)):
+    db_review = TestCaseReview(**review.model_dump(), project_id=project_id)
+    db.add(db_review)
+    db.commit()
+    db.refresh(db_review)
+    return db_review
+
+@router.put("/test-case-reviews/{review_id}", response_model=TestCaseReviewResponse)
+def update_review(review_id: str, review_data: TestCaseReviewUpdate, db: Session = Depends(get_db)):
+    review = db.query(TestCaseReview).filter(TestCaseReview.id == review_id).first()
+    if not review: raise HTTPException(status_code=404, detail="Review not found")
+    for key, value in review_data.model_dump(exclude_unset=True).items():
+        setattr(review, key, value)
+    db.commit()
+    db.refresh(review)
+    return review
+
+@router.delete("/test-case-reviews/{review_id}")
+def delete_review(review_id: str, db: Session = Depends(get_db)):
+    review = db.query(TestCaseReview).filter(TestCaseReview.id == review_id).first()
+    if not review: raise HTTPException(status_code=404, detail="Review not found")
+    db.delete(review)
+    db.commit()
+    return {"message": "deleted"}
+
+# ============== 缺陷管理 ==============
+@router.get("/defects", response_model=List[DefectResponse])
+def get_defects(project_id: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(Defect)
+    if project_id: query = query.filter(Defect.project_id == project_id)
+    return query.all()
+
+@router.get("/defects/{defect_id}", response_model=DefectResponse)
+def get_defect(defect_id: str, db: Session = Depends(get_db)):
+    defect = db.query(Defect).filter(Defect.id == defect_id).first()
+    if not defect: raise HTTPException(status_code=404, detail="Defect not found")
+    return defect
+
+@router.post("/defects", response_model=DefectResponse)
+def create_defect(defect: DefectCreate, project_id: Optional[str] = None, db: Session = Depends(get_db)):
+    db_defect = Defect(**defect.model_dump(), project_id=project_id)
+    db.add(db_defect)
+    db.commit()
+    db.refresh(db_defect)
+    return db_defect
+
+@router.put("/defects/{defect_id}", response_model=DefectResponse)
+def update_defect(defect_id: str, defect_data: DefectUpdate, db: Session = Depends(get_db)):
+    defect = db.query(Defect).filter(Defect.id == defect_id).first()
+    if not defect: raise HTTPException(status_code=404, detail="Defect not found")
+    for key, value in defect_data.model_dump(exclude_unset=True).items():
+        setattr(defect, key, value)
+    db.commit()
+    db.refresh(defect)
+    return defect
+
+@router.delete("/defects/{defect_id}")
+def delete_defect(defect_id: str, db: Session = Depends(get_db)):
+    defect = db.query(Defect).filter(Defect.id == defect_id).first()
+    if not defect: raise HTTPException(status_code=404, detail="Defect not found")
+    db.delete(defect)
+    db.commit()
+    return {"message": "deleted"}
+
+# ============== 工具箱 ==============
+@router.get("/tool-definitions", response_model=List[ToolDefinitionResponse])
+def get_tool_defs(db: Session = Depends(get_db)):
+    return db.query(ToolDefinition).all()
+
+@router.get("/tool-definitions/{tool_id}", response_model=ToolDefinitionResponse)
+def get_tool_def(tool_id: str, db: Session = Depends(get_db)):
+    tool = db.query(ToolDefinition).filter(ToolDefinition.id == tool_id).first()
+    if not tool: raise HTTPException(status_code=404, detail="Tool not found")
+    return tool
+
+@router.post("/tool-definitions", response_model=ToolDefinitionResponse)
+def create_tool_def(tool: ToolDefinitionCreate, db: Session = Depends(get_db)):
+    db_tool = ToolDefinition(**tool.model_dump())
+    db.add(db_tool)
+    db.commit()
+    db.refresh(db_tool)
+    return db_tool
+
+@router.get("/tool-instances", response_model=List[ToolInstanceResponse])
+def get_tool_instances(project_id: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(ToolInstance)
+    if project_id: query = query.filter(ToolInstance.project_id == project_id)
+    return query.all()
+
+@router.post("/tool-instances", response_model=ToolInstanceResponse)
+def create_tool_inst(inst: ToolInstanceCreate, db: Session = Depends(get_db)):
+    db_inst = ToolInstance(**inst.model_dump())
+    db.add(db_inst)
+    db.commit()
+    db.refresh(db_inst)
+    return db_inst
+
+# ============== 集成配置 ==============
+@router.get("/integration-configs", response_model=List[IntegrationConfigResponse])
+def get_integrations(project_id: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(IntegrationConfig)
+    if project_id: query = query.filter(IntegrationConfig.project_id == project_id)
+    return query.all()
+
+@router.post("/integration-configs", response_model=IntegrationConfigResponse)
+def create_integration(integration: IntegrationConfigCreate, db: Session = Depends(get_db)):
+    db_integ = IntegrationConfig(**integration.model_dump())
+    db.add(db_integ)
+    db.commit()
+    db.refresh(db_integ)
+    return db_integ
+
+@router.put("/integration-configs/{config_id}", response_model=IntegrationConfigResponse)
+def update_integration(config_id: str, config_data: IntegrationConfigUpdate, db: Session = Depends(get_db)):
+    config = db.query(IntegrationConfig).filter(IntegrationConfig.id == config_id).first()
+    if not config: raise HTTPException(status_code=404, detail="Integration not found")
+    for key, value in config_data.model_dump(exclude_unset=True).items():
+        setattr(config, key, value)
+    db.commit()
+    db.refresh(config)
+    return config
+
+@router.delete("/integration-configs/{config_id}")
+def delete_integration(config_id: str, db: Session = Depends(get_db)):
+    config = db.query(IntegrationConfig).filter(IntegrationConfig.id == config_id).first()
+    if not config: raise HTTPException(status_code=404, detail="Integration not found")
+    db.delete(config)
+    db.commit()
+    return {"message": "deleted"}
+
+# ============== 报告模板/记录 ==============
+@router.get("/report-templates", response_model=List[ReportTemplateResponse])
+def get_report_templates(db: Session = Depends(get_db)):
+    return db.query(ReportTemplate).all()
+
+@router.post("/report-templates", response_model=ReportTemplateResponse)
+def create_report_template(template: ReportTemplateCreate, db: Session = Depends(get_db)):
+    db_temp = ReportTemplate(**template.model_dump())
+    db.add(db_temp)
+    db.commit()
+    db.refresh(db_temp)
+    return db_temp
+
+@router.get("/report-records", response_model=List[ReportRecordResponse])
+def get_report_records(project_id: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(ReportRecord)
+    if project_id: query = query.filter(ReportRecord.project_id == project_id)
+    return query.all()
+
+@router.post("/report-records", response_model=ReportRecordResponse)
+def create_report_record(record: ReportRecordCreate, db: Session = Depends(get_db)):
+    db_rec = ReportRecord(**record.model_dump())
+    db.add(db_rec)
+    db.commit()
+    db.refresh(db_rec)
+    return db_rec
+
+# ============== 版本/迭代 ==============
+@router.get("/version-iterations", response_model=List[VersionIterationResponse])
+def get_versions(project_id: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(VersionIteration)
+    if project_id: query = query.filter(VersionIteration.project_id == project_id)
+    return query.all()
+
+@router.get("/version-iterations/{version_id}", response_model=VersionIterationResponse)
+def get_version(version_id: str, db: Session = Depends(get_db)):
+    version = db.query(VersionIteration).filter(VersionIteration.id == version_id).first()
+    if not version: raise HTTPException(status_code=404, detail="Version not found")
+    return version
+
+@router.post("/version-iterations", response_model=VersionIterationResponse)
+def create_version(version: VersionIterationCreate, db: Session = Depends(get_db)):
+    db_ver = VersionIteration(**version.model_dump())
+    db.add(db_ver)
+    db.commit()
+    db.refresh(db_ver)
+    return db_ver
+
+@router.put("/version-iterations/{version_id}", response_model=VersionIterationResponse)
+def update_version(version_id: str, version_data: VersionIterationUpdate, db: Session = Depends(get_db)):
+    version = db.query(VersionIteration).filter(VersionIteration.id == version_id).first()
+    if not version: raise HTTPException(status_code=404, detail="Version not found")
+    for key, value in version_data.model_dump(exclude_unset=True).items():
+        setattr(version, key, value)
+    db.commit()
+    db.refresh(version)
+    return version
+
+@router.delete("/version-iterations/{version_id}")
+def delete_version(version_id: str, db: Session = Depends(get_db)):
+    version = db.query(VersionIteration).filter(VersionIteration.id == version_id).first()
+    if not version: raise HTTPException(status_code=404, detail="Version not found")
+    db.delete(version)
+    db.commit()
+    return {"message": "deleted"}

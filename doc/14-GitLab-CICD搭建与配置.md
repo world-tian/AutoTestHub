@@ -200,6 +200,29 @@ test-windows:
   - 执行时机：静态检查放 CI 的 `scan` stage；功能性合规用例放部署后（针对运行环境）跑。
 - **落地步骤**：先产出「隐私合规检查清单」→ 拆成静态规则 + 自动化用例 → 分别接入 CI（扫描）与部署后（接口/E2E 测试）。
 
+### 待办 5：AutoTestHub 用 Docker 部署到 GitLab 服务器
+> 目标：把后端(FastAPI)+前端(React) 以 Docker 跑在 GitLab 这台服务器（`120.79.207.52`）上，并由 CI 的 `deploy` 阶段自动发布。
+
+- **方案对比**：
+  - **方案 A（推荐）：在服务器上再装一个 GitLab Runner**（docker executor 或 shell+docker），`deploy` job 打标签 `tags: [deploy]` 落到该 Runner，直接在服务器本地 `docker compose up -d --build`。无需镜像仓库、无需跨机 SSH 配密钥，最省心。
+  - 方案 B：现有 Runner 通过 **SSH** 连服务器执行 `git pull && docker compose up -d --build`；需要把服务器 SSH 私钥放进 GitLab CI/CD Variables（masked/protected）。
+  - 方案 C：CI 构建镜像 push 到 **GitLab Container Registry**，服务器 `docker compose pull`；需该 GitLab 实例启用了 Registry（老实例可能未开）。
+- **必须先补：生产用 Docker 配置**（现有 `docker-compose.yml` 是开发模式：vite dev + uvicorn --reload，不能直接上生产）：
+  - 新增 `compose.prod.yml`：后端 `uvicorn`（去掉 `--reload`）；前端改为**多阶段构建**（`npm run build` 产出 `dist`，再用 `nginx` 镜像托管静态文件并反代 `/api` 到后端）。
+  - 用 `.env`/CI Variables 注入 `SECRET_KEY`、`AI_*` 等，不写进镜像。
+  - 数据持久化：SQLite 库文件用 volume 挂载（或后续换 Postgres）。
+- **落地步骤**：
+  1. 确认前置条件（见下）。
+  2. 写 `compose.prod.yml` + 前端生产 `Dockerfile`(多阶段 + nginx) + `nginx.conf`。
+  3. 服务器装 Runner 并打标签 `deploy`（方案 A）。
+  4. CI 加 `deploy` stage：`tags:[deploy]`，`script: docker compose -f compose.prod.yml up -d --build`；可设 `when: manual` 或仅 `master` 触发。
+  5. 配端口与访问（如后端 8000、前端 80/自定端口），验证线上可访问。
+- **需要你确认的前置条件**：
+  - 服务器是否已装 **Docker + docker compose**？当前登录用户能否免 sudo 跑 docker？
+  - 是否能拿到服务器的 **SSH 登录**（用户/端口/密钥）用于装 Runner 或方案 B？
+  - 对外暴露的**端口**与访问域名/IP 规划？是否要跟现有 GitLab 的端口错开。
+  - 该 GitLab 是否启用了 **Container Registry**（决定能否用方案 C）。
+
 ---
 
 > 维护：本文件同时存于仓库 `doc/14-GitLab-CICD搭建与配置.md`，与飞书 wiki 同步。

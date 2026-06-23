@@ -1,10 +1,10 @@
 # ============================================================
-# AutoTestHub CI 流水线（WSL shell runner 验证版）
-# WSL：用 python3 / node(npm)；shell executor = bash。
+# AutoTestHub CI/CD 流水线（生产环境部署版）
 # ============================================================
 
 stages:
   - build
+  - deploy
 
 backend-compile:
   stage: build
@@ -23,3 +23,15 @@ frontend-build:
     paths:
       - frontend/dist
     expire_in: 1 week
+
+deploy-to-server:
+  stage: deploy
+  only:
+    - main
+    - master
+  script:
+    - echo "Deploying AutoTestHub to local Docker environment..."
+    - mkdir -p ./data
+    - docker compose down --remove-orphans
+    - docker compose up -d --build
+    - echo "Deployment completed successfully!"

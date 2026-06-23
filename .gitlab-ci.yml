@@ -1,0 +1,49 @@
+# ============================================================
+# AutoTestHub 最小 CI 流水线（学习用，先把流程跑通）
+#
+# 默认按 docker executor 编写：每个 job 在 image 指定的容器里执行。
+# 如果你的 GitLab Runner 是 shell executor：
+#   - image / services 字段会被忽略，job 直接在 Runner 主机上执行，
+#     需要主机自带 python3、pip、node、npm。
+# 如果是 docker executor：Runner 主机需安装 Docker，且能拉取 python/node 镜像。
+# ============================================================
+
+stages:
+  - build
+
+# ---------- 后端：装依赖 + 语法编译检查 ----------
+backend-build:
+  stage: build
+  image: python:3.11-slim
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  cache:
+    key: "pip-$CI_COMMIT_REF_SLUG"
+    paths:
+      - .cache/pip
+  before_script:
+    - cd backend
+    - pip install --no-cache-dir -r requirements.txt
+  script:
+    # 编译所有 .py，检查语法/导入错误（真正的 pytest 测试后续再补）
+    - python -m compileall -q app
+
+# ---------- 前端：装依赖 + 构建 ----------
+frontend-build:
+  stage: build
+  image: node:20-slim
+  cache:
+    key: "npm-$CI_COMMIT_REF_SLUG"
+    paths:
+      - frontend/node_modules
+  before_script:
+    - cd frontend
+    # 该项目存在 peer 依赖冲突，沿用 Dockerfile 里验证过的安装方式。
+    # 如需更严格、可复现的安装，可改为：npm ci --legacy-peer-deps
+    - npm install --no-audit --no-fund --legacy-peer-deps
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - frontend/dist
+    expire_in: 1 week

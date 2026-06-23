@@ -1,0 +1,32 @@
+# Node
+node_modules/
+dist/
+build/
+.npm/
+.pnp.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+.env
+
+# Database
+*.db
+*.sqlite3
+
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+
+# Uploads / runtime data
+backend/uploads/
+data/

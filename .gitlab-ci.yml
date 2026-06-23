@@ -1,47 +1,32 @@
 # ============================================================
 # AutoTestHub 最小 CI 流水线（学习用，先把流程跑通）
 #
-# 默认按 docker executor 编写：每个 job 在 image 指定的容器里执行。
-# 如果你的 GitLab Runner 是 shell executor：
-#   - image / services 字段会被忽略，job 直接在 Runner 主机上执行，
-#     需要主机自带 python3、pip、node、npm。
-# 如果是 docker executor：Runner 主机需安装 Docker，且能拉取 python/node 镜像。
+# 执行环境：WSL Ubuntu 上注册的 GitLab Runner（executor = shell, bash）。
+#   - 直接在 Runner 主机（WSL）上执行，使用主机自带的 python3 / node / npm。
+#   - 因此本文件不写 image:（shell executor 会忽略它）。
+#
+# 说明：后端 job 目前只做语法编译检查（compileall，零第三方依赖），
+#       不安装 requirements。等以后改用 docker executor、或在 Runner 主机
+#       装好可编译的 Python 环境后，再补 pip 安装 + pytest 真实测试。
 # ============================================================
 
 stages:
   - build
 
-# ---------- 后端：装依赖 + 语法编译检查 ----------
+# ---------- 后端：Python 语法/编译检查 ----------
 backend-build:
   stage: build
-  image: python:3.11-slim
-  variables:
-    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  cache:
-    key: "pip-$CI_COMMIT_REF_SLUG"
-    paths:
-      - .cache/pip
-  before_script:
-    - cd backend
-    - pip install --no-cache-dir -r requirements.txt
   script:
-    # 编译所有 .py，检查语法/导入错误（真正的 pytest 测试后续再补）
-    - python -m compileall -q app
+    - cd backend
+    - python3 -m compileall -q app
+    - echo "backend compile check passed"
 
 # ---------- 前端：装依赖 + 构建 ----------
 frontend-build:
   stage: build
-  image: node:20-slim
-  cache:
-    key: "npm-$CI_COMMIT_REF_SLUG"
-    paths:
-      - frontend/node_modules
-  before_script:
-    - cd frontend
-    # 该项目存在 peer 依赖冲突，沿用 Dockerfile 里验证过的安装方式。
-    # 如需更严格、可复现的安装，可改为：npm ci --legacy-peer-deps
-    - npm install --no-audit --no-fund --legacy-peer-deps
   script:
+    - cd frontend
+    - npm install --no-audit --no-fund --legacy-peer-deps
     - npm run build
   artifacts:
     paths:

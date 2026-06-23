@@ -88,6 +88,34 @@
 
 > WSL 这个坑用 strace 实锤：`echo→rm→rm` 全成功，最后 `clear_console -q` 返回 1 拖垮 shell。手动 `bash -l` 复现不出来，因为嵌套 shell 的 `SHLVL≥2` 会跳过 clear_console。
 
+### 4.4 启动 / 上线 Runner
+
+> 目前是**手动启动**，**关机 / 重启 WSL 后需要重新启**一次。job 一直 pending 多半就是对应 Runner 没在跑（GitLab UI 的绿点有几分钟滞后，不代表进程还活着）。
+
+**WSL Runner（编译）** —— 在任意 Windows 终端（PowerShell / cmd / Git Bash）执行：
+```
+# 前台运行（保持该终端窗口开着别关，可看实时日志）
+wsl -d Ubuntu -- bash -lc 'export PATH=$HOME/node22/bin:$PATH; exec ~/gitlab-runner run --config ~/gitlab-runner-config.toml'
+
+# 或后台常驻（日志写到 ~/gitlab-runner.log，终端可关）
+wsl -d Ubuntu -- bash -lc 'export PATH=$HOME/node22/bin:$PATH; nohup ~/gitlab-runner run --config ~/gitlab-runner-config.toml > ~/gitlab-runner.log 2>&1 &'
+```
+
+**Windows Runner（测试）** —— 在 PowerShell / cmd 执行：
+```
+C:\GitLab-Runner\gitlab-runner.exe run --config C:/GitLab-Runner/config.toml
+```
+
+**确认 / 排查：**
+```
+# WSL runner 进程是否在跑
+wsl -d Ubuntu -- pgrep -af "gitlab-runner run"
+# Windows runner 进程是否在跑（PowerShell）
+Get-Process gitlab-runner
+```
+
+> 长期免手动：WSL 可装成 systemd 服务、Windows 可用 `gitlab-runner install` 装成系统服务实现开机自启（后续按需配置）。
+
 ## 五、当前 .gitlab-ci.yml
 
 ```yaml

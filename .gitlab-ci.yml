@@ -1,34 +1,29 @@
 # ============================================================
-# AutoTestHub 最小 CI 流水线（学习用，先把流程跑通）
+# AutoTestHub CI 流水线
 #
-# 执行环境：WSL Ubuntu 上注册的 GitLab Runner（executor = shell, bash）。
-#   - 直接在 Runner 主机（WSL）上执行，使用主机自带的 python3 / node / npm。
-#   - 因此本文件不写 image:（shell executor 会忽略它）。
+# 当前阶段：仅用 Windows Runner（executor = shell, powershell）跑通整条流程。
+#   - 后续规划：编译/构建交给 WSL Runner，测试留在 Windows Runner，
+#     通过 tags 路由（WSL prepare 问题修好后再接入）。
 #
-# 说明：后端 job 目前只做语法编译检查（compileall，零第三方依赖），
-#       不安装 requirements。等以后改用 docker executor、或在 Runner 主机
-#       装好可编译的 Python 环境后，再补 pip 安装 + pytest 真实测试。
+# Windows 注意：用 python（不是 python3）。
 # ============================================================
 
 stages:
   - build
+  - test
 
 # ---------- 后端：Python 语法/编译检查 ----------
-backend-build:
+backend-compile:
   stage: build
   script:
     - cd backend
-    - python3 -m compileall -q app
-    - echo "backend compile check passed"
+    - python -m compileall -q app
+    - echo "backend compile OK"
 
-# ---------- 前端：装依赖 + 构建 ----------
-frontend-build:
-  stage: build
+# ---------- 环境自检：证明 Runner 能跑测试环境 ----------
+test-env:
+  stage: test
   script:
-    - cd frontend
-    - npm install --no-audit --no-fund --legacy-peer-deps
-    - npm run build
-  artifacts:
-    paths:
-      - frontend/dist
-    expire_in: 1 week
+    - python --version
+    - node --version
+    - echo "test runner ready"

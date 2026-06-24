@@ -35,12 +35,7 @@ variables:
 # MR 场景下，把目标分支合进当前工作区，让编译/测试针对"预合并结果"（贴近 EE 的 Merged Results）
 # 非 MR（master/release 等）不做任何事。冲突即失败，提示先解决。
 .merge-target-sh: &merge-target-sh
-  - |
-    if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
-      echo "🔀 MR：合并目标分支 origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME（测试预合并结果）"
-      git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
-      git -c user.email=ci@ci -c user.name=ci merge --no-edit FETCH_HEAD || { echo "❌ 与目标分支存在冲突，请先解决再合入"; exit 1; }
-    fi
+  - 'if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then echo "🔀 MR：合并目标分支 origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME（测试预合并结果）" && git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" && git -c user.email=ci@ci -c user.name=ci merge --no-edit FETCH_HEAD || { echo "❌ 与目标分支存在冲突，请先解决再合入"; exit 1; }; fi'
 
 # ---------- 可配置的 Runner 节点 ----------
 .linux-node:
@@ -180,12 +175,7 @@ deploy-to-server:
   dependencies: [frontend-build]
   before_script:
     - eval $(ssh-agent -s)
-    - |
-      if [ -f "$SSH_PRIVATE_KEY" ]; then
-        chmod 400 "$SSH_PRIVATE_KEY"; ssh-add "$SSH_PRIVATE_KEY" > /dev/null
-      else
-        echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
-      fi
+    - 'if [ -f "$SSH_PRIVATE_KEY" ]; then chmod 400 "$SSH_PRIVATE_KEY" && ssh-add "$SSH_PRIVATE_KEY" > /dev/null; else echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null; fi'
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
     - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts

@@ -1213,7 +1213,10 @@ def get_report_records(project_id: Optional[str] = None, db: Session = Depends(g
 
 @router.post("/report-records", response_model=ReportRecordResponse)
 def create_report_record(record: ReportRecordCreate, db: Session = Depends(get_db)):
-    db_rec = ReportRecord(**record.model_dump())
+    # 仅取 ReportRecord 实际存在的列，避免 schema 多出的字段(如 feature)导致 TypeError
+    valid_cols = {c.name for c in ReportRecord.__table__.columns}
+    data = {k: v for k, v in record.model_dump().items() if k in valid_cols}
+    db_rec = ReportRecord(**data)
     db.add(db_rec)
     db.commit()
     db.refresh(db_rec)

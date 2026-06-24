@@ -6,7 +6,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     volumes:
-      - ./data:/app/data
+      - db-data:/app/data
     environment:
       - DATABASE_URL=sqlite:////app/data/autotesthub.db
       - FEISHU_APP_ID=${FEISHU_APP_ID}
@@ -32,3 +32,6 @@ services:
     restart: always
     depends_on:
       - backend
+
+volumes:
+  db-data:

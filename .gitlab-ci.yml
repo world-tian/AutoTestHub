@@ -24,10 +24,10 @@ stages:
 
 workflow:
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
-      when: never
-    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'     # 允许创建或更新 MR 时自动运行
+    - if: '$CI_COMMIT_BRANCH == "master"'                    # 允许 master 合入/提交运行
+    - if: '$CI_COMMIT_BRANCH =~ /^release/'                  # 允许 release 发布运行
+    - when: never                                            # 其它日常的普通分支 push 不触发流水线
 
 variables:
   GIT_DEPTH: "0"     # 完整历史，便于 MR 合并目标分支测"预合并结果"

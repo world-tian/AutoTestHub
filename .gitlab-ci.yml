@@ -8,6 +8,7 @@ stages:
 
 backend-compile:
   stage: build
+  tags: [wsl]
   script:
     - cd backend
     - python3 -m compileall -q app
@@ -15,6 +16,7 @@ backend-compile:
 
 frontend-build:
   stage: build
+  tags: [wsl]
   script:
     - cd frontend
     - npm install --no-audit --no-fund --legacy-peer-deps
@@ -26,6 +28,9 @@ frontend-build:
 
 deploy-to-server:
   stage: deploy
+  tags: [wsl]
+  dependencies:
+    - frontend-build
   only:
     - main
     - master
@@ -43,9 +48,9 @@ deploy-to-server:
     - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
-    - echo "Syncing workspace files to remote GitLab server..."
+    - echo "Syncing workspace files to remote server ($DEPLOY_HOST)..."
     - ssh $DEPLOY_USER@$DEPLOY_HOST "mkdir -p /opt/autotesthub"
-    - rsync -avz --delete --exclude '.git/' --exclude 'frontend/node_modules/' --exclude 'backend/venv/' ./ $DEPLOY_USER@$DEPLOY_HOST:/opt/autotesthub/
-    - echo "Triggering remote docker-compose rebuild..."
-    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /opt/autotesthub && docker compose down --remove-orphans && docker compose up -d --build"
-    - echo "Deployment completed successfully!"
+    - rsync -avz --delete --exclude '.git/' --exclude 'frontend/node_modules/' --exclude 'backend/venv/' --exclude 'data/' ./ $DEPLOY_USER@$DEPLOY_HOST:/opt/autotesthub/
+    - echo "Starting docker compose on remote server..."
+    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /opt/autotesthub && docker compose down --remove-orphans && docker compose up -d --build && echo 'Containers:' && docker compose ps"
+    - echo "Deployment completed! App available at http://$DEPLOY_HOST:15173"

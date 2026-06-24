@@ -184,7 +184,7 @@ deploy-to-server:
     - ssh $DEPLOY_USER@$DEPLOY_HOST "mkdir -p /opt/autotesthub"
     - rsync -avz --delete --exclude '.git/' --exclude 'frontend/node_modules/' --exclude 'backend/venv/' --exclude 'data/' ./ $DEPLOY_USER@$DEPLOY_HOST:/opt/autotesthub/
     - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /opt/autotesthub && docker compose down --remove-orphans && docker compose up -d --build && docker compose ps"
-    - echo "Deployed: http://$DEPLOY_HOST:15173"
+    - 'echo "Deployed: http://$DEPLOY_HOST:15173"'
 
 # ============================================================
 # 5. 测试

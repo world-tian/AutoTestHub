@@ -31,7 +31,13 @@ deploy-to-server:
     - master
   before_script:
     - eval $(ssh-agent -s)
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+    - |
+      if [ -f "$SSH_PRIVATE_KEY" ]; then
+        chmod 400 "$SSH_PRIVATE_KEY"
+        ssh-add "$SSH_PRIVATE_KEY" > /dev/null
+      else
+        echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+      fi
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
     - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts

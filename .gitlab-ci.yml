@@ -1,11 +1,84 @@
 # ============================================================
-# AutoTestHub CI/CD 流水线（生产环境部署版）
+# AutoTestHub CI/CD 流水线
+# 流程：push → scan(自动·代码扫描门禁) → test(自动·autotestrunner demo)
+#        → gate(人工确认) → build(编译) → deploy(仅 master)
+# 扫描跑在 WSL Runner(tags: wsl)，autotestrunner 测试跑在 Windows Runner(tags: windows)
 # ============================================================
 
 stages:
+  - scan
+  - test
+  - gate
   - build
   - deploy
 
+# ---------- 1. 代码扫描 + 质量门禁（push 自动触发，门槛先放低）----------
+
+# 后端 Python 安全扫描（bandit）
+# 门禁：仅 MEDIUM 及以上严重级别才阻断流水线（-ll），LOW 仅记录进报告，不卡提交
+sast-bandit:
+  stage: scan
+  tags: [wsl]
+  script:
+    - python3 -m pip install --quiet --user bandit || python3 -m pip install --quiet --user --break-system-packages bandit
+    - mkdir -p scan-reports
+    # 全量报告（含 LOW），始终生成、不影响结果，供下载查看
+    - python3 -m bandit -r backend/app -f txt -o scan-reports/bandit-full.txt || true
+    - python3 -m bandit -r backend/app -f json -o scan-reports/bandit-full.json || true
+    # 门禁判定：MEDIUM+ 存在则非零退出 → 阻断（当前为 0，天然通过）
+    - python3 -m bandit -r backend/app -ll
+  artifacts:
+    when: always
+    paths:
+      - scan-reports/
+    expire_in: 1 week
+
+# 前端类型检查（tsc）。phase-1 设为 allow_failure，仅作信息提示，不卡提交
+typecheck-frontend:
+  stage: scan
+  tags: [wsl]
+  allow_failure: true
+  script:
+    - cd frontend
+    - npm install --no-audit --no-fund --legacy-peer-deps
+    - npx --yes tsc --noEmit
+
+# ---------- 2. 本地自动化测试：autotestrunner demo plan（Windows Runner）----------
+# 直接触发 D:\dev\testcode\AutoTestRunner 的 examples/plan.yaml（无硬件即可跑通的 TC-001/TC-002）
+autotestrunner-demo:
+  stage: test
+  tags: [windows]
+  variables:
+    PY: "D:\\dev\\testcode\\python311\\python.exe"
+    RUNNER_DIR: "D:\\dev\\testcode\\AutoTestRunner"
+  script:
+    - $ErrorActionPreference = "Stop"
+    - Set-Location $env:RUNNER_DIR
+    # 确保 autotest_runner 及其依赖(pytest/pytest-html/pyyaml)就绪（已装则秒过）
+    - '& $env:PY -m pip install -e . -q --disable-pip-version-check'
+    # 执行 demo 测试计划，pytest 退出码透传：用例失败则 job 失败
+    - '& $env:PY -m autotest_runner run -plan examples/plan.yaml'
+    - 'if ($LASTEXITCODE -ne 0) { throw "autotestrunner demo plan failed (exit $LASTEXITCODE)" }'
+  after_script:
+    # 把本机生成的 HTML 报告拷回流水线工作区，供 GitLab artifacts 收集下载
+    - New-Item -ItemType Directory -Force "$env:CI_PROJECT_DIR\test-reports" | Out-Null
+    - Copy-Item "$env:RUNNER_DIR\reports\local\*.html" "$env:CI_PROJECT_DIR\test-reports\" -Force -ErrorAction SilentlyContinue
+  artifacts:
+    when: always
+    paths:
+      - test-reports/
+    expire_in: 1 week
+
+# ---------- 3. 人工确认门（点一下才进编译/部署）----------
+approve-build:
+  stage: gate
+  tags: [wsl]
+  when: manual
+  allow_failure: false
+  script:
+    - echo "✅ 人工确认通过，开始编译构建"
+
+# ---------- 4. 编译构建 ----------
 backend-compile:
   stage: build
   tags: [wsl]
@@ -26,6 +99,7 @@ frontend-build:
       - frontend/dist
     expire_in: 1 week
 
+# ---------- 5. 部署到服务器（仅 master）----------
 deploy-to-server:
   stage: deploy
   tags: [wsl]

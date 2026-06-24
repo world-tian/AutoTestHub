@@ -14,7 +14,13 @@
 | Windows Runner | ✅ 跑通 | shell executor + powershell |
 | WSL Runner | ✅ 跑通 | shell executor + bash（编译 + 部署） |
 | Docker 部署到服务器 | ✅ 已完成 | 方案 B：WSL Runner SSH 推文件 + 远程 docker compose |
-| 双 Runner 标签路由 | ✅ 已配置 | WSL: `tags: [wsl]`，构建与部署均路由到 WSL Runner |
+| 双 Runner 标签路由 | ✅ 已配置 | WSL: `tags: [wsl]`（扫描/编译/部署）；Windows: `tags: [windows]`（本地测试） |
+| 代码扫描 + 质量门禁 | ✅ 已配置 | scan 阶段：bandit(后端·门禁 MEDIUM+) + tsc(前端·informational) |
+| autotestrunner 测试 | ✅ 已配置 | test 阶段：Windows Runner 跑 demo plan（examples/plan.yaml） |
+| 人工确认门 | ✅ 已配置 | gate 阶段：`when: manual`，确认后才进编译/部署 |
+
+> **流水线整体流程（push 触发）：**
+> `scan(自动·扫描门禁) → test(自动·autotestrunner demo) → gate(人工点确认) → build(编译) → deploy(仅 master)`
 
 ---
 
@@ -138,18 +144,78 @@ wsl -d Ubuntu -- pgrep -af "gitlab-runner run"
 
 ## 五、当前 .gitlab-ci.yml
 
+> 5 个 stage：`scan → test → gate → build → deploy`。
+> 扫描/编译/部署在 WSL Runner（`tags: [wsl]`），autotestrunner 测试在 Windows Runner（`tags: [windows]`）。
+
 ```yaml
 stages:
+  - scan
+  - test
+  - gate
   - build
   - deploy
 
+# ---- 1. 代码扫描 + 质量门禁（push 自动触发，门槛先放低）----
+sast-bandit:            # 后端 Python 安全扫描，门禁仅 MEDIUM+ 阻断（-ll）
+  stage: scan
+  tags: [wsl]
+  script:
+    - python3 -m pip install --quiet --user bandit || python3 -m pip install --quiet --user --break-system-packages bandit
+    - mkdir -p scan-reports
+    - python3 -m bandit -r backend/app -f txt -o scan-reports/bandit-full.txt || true
+    - python3 -m bandit -r backend/app -f json -o scan-reports/bandit-full.json || true
+    - python3 -m bandit -r backend/app -ll       # MEDIUM+ 存在则非零退出 → 阻断
+  artifacts:
+    when: always
+    paths: [scan-reports/]
+    expire_in: 1 week
+
+typecheck-frontend:     # 前端类型检查，allow_failure 仅提示不卡提交
+  stage: scan
+  tags: [wsl]
+  allow_failure: true
+  script:
+    - cd frontend
+    - npm install --no-audit --no-fund --legacy-peer-deps
+    - npx --yes tsc --noEmit
+
+# ---- 2. autotestrunner demo plan（Windows Runner）----
+autotestrunner-demo:
+  stage: test
+  tags: [windows]
+  variables:
+    PY: "D:\\dev\\testcode\\python311\\python.exe"
+    RUNNER_DIR: "D:\\dev\\testcode\\AutoTestRunner"
+  script:
+    - $ErrorActionPreference = "Stop"
+    - Set-Location $env:RUNNER_DIR
+    - '& $env:PY -m pip install -e . -q --disable-pip-version-check'
+    - '& $env:PY -m autotest_runner run -plan examples/plan.yaml'
+    - 'if ($LASTEXITCODE -ne 0) { throw "autotestrunner demo plan failed (exit $LASTEXITCODE)" }'
+  after_script:
+    - New-Item -ItemType Directory -Force "$env:CI_PROJECT_DIR\test-reports" | Out-Null
+    - Copy-Item "$env:RUNNER_DIR\reports\local\*.html" "$env:CI_PROJECT_DIR\test-reports\" -Force -ErrorAction SilentlyContinue
+  artifacts:
+    when: always
+    paths: [test-reports/]
+    expire_in: 1 week
+
+# ---- 3. 人工确认门 ----
+approve-build:
+  stage: gate
+  tags: [wsl]
+  when: manual           # 点一下才进编译/部署
+  allow_failure: false
+  script:
+    - echo "✅ 人工确认通过，开始编译构建"
+
+# ---- 4. 编译构建 ----
 backend-compile:
   stage: build
   tags: [wsl]
   script:
     - cd backend
     - python3 -m compileall -q app
-    - echo "backend compile OK"
 
 frontend-build:
   stage: build
@@ -159,24 +225,20 @@ frontend-build:
     - npm install --no-audit --no-fund --legacy-peer-deps
     - npm run build
   artifacts:
-    paths:
-      - frontend/dist
+    paths: [frontend/dist]
     expire_in: 1 week
 
+# ---- 5. 部署（仅 master）----
 deploy-to-server:
   stage: deploy
   tags: [wsl]
-  dependencies:
-    - frontend-build
-  only:
-    - main
-    - master
+  dependencies: [frontend-build]
+  only: [main, master]
   before_script:
     - eval $(ssh-agent -s)
     - |
       if [ -f "$SSH_PRIVATE_KEY" ]; then
-        chmod 400 "$SSH_PRIVATE_KEY"
-        ssh-add "$SSH_PRIVATE_KEY" > /dev/null
+        chmod 400 "$SSH_PRIVATE_KEY"; ssh-add "$SSH_PRIVATE_KEY" > /dev/null
       else
         echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
       fi
@@ -187,6 +249,8 @@ deploy-to-server:
     - rsync -avz --delete --exclude '.git/' --exclude 'frontend/node_modules/' --exclude 'backend/venv/' --exclude 'data/' ./ $DEPLOY_USER@$DEPLOY_HOST:/opt/autotesthub/
     - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /opt/autotesthub && docker compose down --remove-orphans && docker compose up -d --build && docker compose ps"
 ```
+
+> **门禁调紧方式**（后续）：bandit 把 `-ll` 改 `-l`（含 LOW 也阻断）或去掉兜底；前端 `typecheck-frontend` 去掉 `allow_failure` 即变硬门禁。
 
 **CI/CD Variables（GitLab → Settings → CI/CD → Variables）：**
 
@@ -312,17 +376,23 @@ e9c1a353cb5d   autotesthub-backend     (内部 8000)                 autotesthub
 
 ---
 
-### ⏳ 待办 1：CI 集成代码扫描 + 质量门禁
+### ✅ 待办 1：CI 集成代码扫描 + 质量门禁（已配置 · phase-1 低门槛）
 
-- 后端：`bandit -r app -ll`、`semgrep --config auto`
-- 前端：`npm run lint`
-- 新增 `scan` stage，严重问题非零退出阻断流水线
+- **scan stage（push 自动触发，WSL Runner）**：
+  - `sast-bandit`：后端 Python 安全扫描。门禁 `bandit -r backend/app -ll`，**仅 MEDIUM+ 严重级别阻断**（当前 0，天然通过）；全量报告（含 LOW）写 `scan-reports/` 作为 artifact 下载查看。
+  - `typecheck-frontend`：前端 `tsc --noEmit` 类型检查，`allow_failure: true` 仅提示、不卡提交。
+- **设计取舍**：门槛先放低（"看得到报告但基本不卡提交"），后续按需调紧（见第五节末尾说明）。
+- **WSL python3.14 注意**：PEP 668 外部管理环境，pip 需 `--break-system-packages` 兜底（脚本已含 `||` 回退）。
+- **可演进**：后端再加 `semgrep --config auto`；前端补 eslint 配置后换 `npm run lint`。
 
-### ⏳ 待办 2：Windows Runner 跑通 autotestrunner 自动化测试
+### ✅ 待办 2：Windows Runner 跑通 autotestrunner 自动化测试（已配置）
 
-- `test` stage 加 `tags: [windows]` job
-- 产出 junit/HTML 报告作为 artifacts
-- 接入 GitLab 测试可视化（`reports: junit:`）
+- **test stage（Windows Runner，`tags: [windows]`）**：`autotestrunner-demo` job 直接拉起本机
+  `D:\dev\testcode\AutoTestRunner` 的 `examples/plan.yaml`（TC-001/TC-002，纯 `assert True`、serial/adb 关闭，**无硬件即可跑通**）。
+- **执行**：`python311 -m pip install -e .`（确保依赖）→ `python -m autotest_runner run -plan examples/plan.yaml`，pytest 退出码透传，失败则 job 红。
+- **报告**：runner 产出 `reports/local/*.html`，`after_script` 拷回 `$CI_PROJECT_DIR/test-reports/` 作为 artifact（`when: always`，失败也上传）。
+- **前置要求**：① Windows Runner 在 GitLab UI 打 `windows` 标签且进程在跑；② 本机 python311 在 `D:\dev\testcode\python311`。
+- **可演进**：runner.py 增加 `--junitxml` 输出后，job 加 `reports: junit:` 接入 GitLab 测试可视化。
 
 ### ⏳ 待办 3：后端完整构建（非仅语法检查）
 

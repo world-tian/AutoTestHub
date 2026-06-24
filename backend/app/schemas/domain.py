@@ -540,3 +540,54 @@ class ToolExecuteRequest(BaseModel):
     tool_instance_id: str
     parameters: Dict[str, Any]
 
+
+# ============== 持续集成报告 ==============
+class CIReportJobIn(BaseModel):
+    name: str
+    stage: Optional[str] = None
+    status: Optional[str] = None
+    duration: Optional[int] = None
+    coverage: Optional[str] = None
+    web_url: Optional[str] = None
+    log: Optional[str] = None
+
+class CIReportJobResponse(CIReportJobIn):
+    id: int
+    class Config:
+        from_attributes = True
+
+class CIReportCreate(BaseModel):
+    pipeline_iid: Optional[int] = None
+    pipeline_id: Optional[str] = None
+    name: str
+    branch: Optional[str] = None
+    commit_sha: Optional[str] = None
+    source: Optional[str] = None
+    trigger_name: Optional[str] = None
+    trigger_email: Optional[str] = None
+    status: str = "success"
+    pipeline_url: Optional[str] = None
+    duration: Optional[int] = None
+    coverage: Optional[str] = None
+    jobs: List[CIReportJobIn] = []
+
+class CIReportResponse(BaseModel):
+    id: str
+    pipeline_iid: Optional[int] = None
+    name: str
+    branch: Optional[str] = None
+    commit_sha: Optional[str] = None
+    source: Optional[str] = None
+    trigger_name: Optional[str] = None
+    trigger_email: Optional[str] = None
+    status: str
+    pipeline_url: Optional[str] = None
+    duration: Optional[int] = None
+    coverage: Optional[str] = None
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class CIReportDetailResponse(CIReportResponse):
+    jobs: List[CIReportJobResponse] = []
+

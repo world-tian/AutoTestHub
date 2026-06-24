@@ -29,7 +29,11 @@ import {
     getAllExecutionRuns,
     ExecutionRun,
     getProjects,
-    Project
+    Project,
+    getCIReports,
+    getCIReport,
+    CIReport,
+    CIReportJob
 } from '../api';
 import dayjs from 'dayjs';
 
@@ -46,6 +50,8 @@ export const Reports: React.FC = () => {
     const [genType, setGenType] = useState<'daily' | 'weekly'>('daily');
     const [genDate, setGenDate] = useState<string>(dayjs().format('YYYY-MM-DD'));
     const [viewingReport, setViewingReport] = useState<ReportRecord | null>(null);
+    const [ciReports, setCiReports] = useState<CIReport[]>([]);
+    const [viewingCI, setViewingCI] = useState<CIReport | null>(null);
 
     const loadData = async () => {
         setLoading(true);
@@ -63,6 +69,8 @@ export const Reports: React.FC = () => {
             if (activeTab === 'executions') {
                 const execData = await getAllExecutionRuns();
                 setExecutions(execData);
+            } else if (activeTab === 'ci') {
+                setCiReports(await getCIReports());
             } else {
                 const recordData = await getReportRecords();
                 setRecords(recordData);
@@ -73,6 +81,78 @@ export const Reports: React.FC = () => {
             setLoading(false);
         }
     };
+
+    const fmtDuration = (sec?: number) => {
+        if (!sec && sec !== 0) return '-';
+        const m = Math.floor(sec / 60), s = sec % 60;
+        return m > 0 ? `${m}分${s}秒` : `${s}秒`;
+    };
+
+    const ciStatusTag = (status?: string) => {
+        const map: Record<string, [string, string]> = {
+            success: ['green', '成功'], failed: ['red', '失败'],
+            running: ['cyan', '运行中'], skipped: ['default', '跳过'],
+            canceled: ['orange', '已取消'], manual: ['purple', '手动'],
+        };
+        const [color, label] = map[status || ''] || ['default', status || '-'];
+        return <Tag color={color}>{label}</Tag>;
+    };
+
+    const openCIDetail = async (record: CIReport) => {
+        try {
+            setViewingCI(await getCIReport(record.id));   // 拉详情（含 jobs）
+        } catch {
+            setViewingCI(record);
+        }
+    };
+
+    const ciColumns = [
+        {
+            title: '报告名称', dataIndex: 'name', key: 'name',
+            render: (text: string, r: CIReport) => (
+                <Button type="link" style={{ padding: 0 }} onClick={() => openCIDetail(r)}>{text}</Button>
+            ),
+        },
+        {
+            title: '分支', dataIndex: 'branch', key: 'branch',
+            render: (b: string, r: CIReport) => <span>{b} <Text type="secondary">@{r.commit_sha}</Text></span>,
+        },
+        { title: '触发人员', dataIndex: 'trigger_name', key: 'trigger_name', render: (n: string) => n || '-' },
+        { title: '结果', dataIndex: 'status', key: 'status', render: (s: string) => ciStatusTag(s) },
+        { title: '覆盖率', dataIndex: 'coverage', key: 'coverage', render: (c: string) => c || '-' },
+        { title: '耗时', dataIndex: 'duration', key: 'duration', render: (d: number) => fmtDuration(d) },
+        {
+            title: '生成时间', dataIndex: 'created_at', key: 'created_at',
+            sorter: (a: CIReport, b: CIReport) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+            defaultSortOrder: 'descend' as const,
+            render: (date: string) => new Date(date).toLocaleString('zh-CN', { hour12: false }),
+        },
+        {
+            title: '操作', key: 'actions',
+            render: (_: any, r: CIReport) => (
+                <Space>
+                    <Button type="link" size="small" onClick={() => openCIDetail(r)}>详情</Button>
+                    {r.pipeline_url && (
+                        <Button type="link" size="small" onClick={() => window.open(r.pipeline_url, '_blank')}>GitLab</Button>
+                    )}
+                </Space>
+            ),
+        },
+    ];
+
+    const ciJobColumns = [
+        { title: '阶段', dataIndex: 'stage', key: 'stage' },
+        { title: 'Job', dataIndex: 'name', key: 'name' },
+        { title: '结果', dataIndex: 'status', key: 'status', render: (s: string) => ciStatusTag(s) },
+        { title: '耗时', dataIndex: 'duration', key: 'duration', render: (d: number) => fmtDuration(d) },
+        { title: '覆盖率', dataIndex: 'coverage', key: 'coverage', render: (c: string) => c || '-' },
+        {
+            title: '日志', key: 'log',
+            render: (_: any, j: CIReportJob) => j.web_url
+                ? <Button type="link" size="small" onClick={() => window.open(j.web_url, '_blank')}>GitLab 查看</Button>
+                : '-',
+        },
+    ];
 
     useEffect(() => {
         loadData();
@@ -276,6 +356,23 @@ export const Reports: React.FC = () => {
                         )
                     },
                     {
+                        key: 'ci',
+                        label: '持续集成报告',
+                        children: (
+                            <>
+                                <Row gutter={16} style={{ marginBottom: 16 }}>
+                                    <Col span={8}><Card><Statistic title="流水线总数" value={ciReports.length} prefix={<BarChartOutlined />} /></Card></Col>
+                                    <Col span={8}><Card><Statistic title="成功" value={ciReports.filter(r => r.status === 'success').length} valueStyle={{ color: '#3f8600' }} /></Card></Col>
+                                    <Col span={8}><Card><Statistic title="失败" value={ciReports.filter(r => r.status === 'failed').length} valueStyle={{ color: '#cf1322' }} /></Card></Col>
+                                </Row>
+                                <Card>
+                                    <Title level={4} style={{ marginTop: 0 }}>持续集成报告</Title>
+                                    <Table columns={ciColumns} dataSource={ciReports} rowKey="id" loading={loading} />
+                                </Card>
+                            </>
+                        )
+                    },
+                    {
                         key: 'ai_reports',
                         label: 'AI 分析报告记录',
                         children: (
@@ -390,6 +487,53 @@ export const Reports: React.FC = () => {
                         </pre>
                     )}
                 </div>
+                )}
+            </Modal>
+
+            <Modal
+                title={viewingCI?.name}
+                open={!!viewingCI}
+                onCancel={() => setViewingCI(null)}
+                footer={
+                    <Space>
+                        <Button onClick={() => setViewingCI(null)}>关闭</Button>
+                        {viewingCI?.pipeline_url && (
+                            <Button type="primary" onClick={() => window.open(viewingCI.pipeline_url, '_blank')}>
+                                在 GitLab 查看流水线
+                            </Button>
+                        )}
+                    </Space>
+                }
+                width={1000}
+            >
+                {viewingCI && (
+                    <div>
+                        <Row gutter={[16, 8]} style={{ marginBottom: 16 }}>
+                            <Col span={8}><Text type="secondary">触发人员：</Text>{viewingCI.trigger_name || '-'}</Col>
+                            <Col span={8}><Text type="secondary">结果：</Text>{ciStatusTag(viewingCI.status)}</Col>
+                            <Col span={8}><Text type="secondary">来源：</Text>{viewingCI.source || '-'}</Col>
+                            <Col span={8}><Text type="secondary">分支：</Text>{viewingCI.branch} @{viewingCI.commit_sha}</Col>
+                            <Col span={8}><Text type="secondary">覆盖率：</Text>{viewingCI.coverage || '-'}</Col>
+                            <Col span={8}><Text type="secondary">总耗时：</Text>{fmtDuration(viewingCI.duration)}</Col>
+                            <Col span={24}><Text type="secondary">生成时间：</Text>{new Date(viewingCI.created_at).toLocaleString('zh-CN', { hour12: false })}</Col>
+                        </Row>
+                        <Title level={5}>各环节执行情况（展开看日志）</Title>
+                        <Table
+                            columns={ciJobColumns}
+                            dataSource={viewingCI.jobs || []}
+                            rowKey="id"
+                            size="small"
+                            pagination={false}
+                            expandable={{
+                                expandedRowRender: (j: CIReportJob) => (
+                                    <pre style={{ background: '#1e1e1e', color: '#d4d4d4', padding: 12, borderRadius: 4, overflow: 'auto', maxHeight: 400, fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                                        {j.log || '(无日志)'}
+                                    </pre>
+                                ),
+                                rowExpandable: (j: CIReportJob) => !!j.log,
+                            }}
+                        />
+                    </div>
                 )}
             </Modal>
         </div>

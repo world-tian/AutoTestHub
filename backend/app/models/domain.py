@@ -332,6 +332,42 @@ class VersionIteration(Base):
     
     project = relationship("Project")
 
+class CIReport(Base):
+    """持续集成报告（一条流水线一条）"""
+    __tablename__ = "ci_reports"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    pipeline_iid = Column(Integer, nullable=True)       # GitLab 流水线序号 #50
+    pipeline_id = Column(String, nullable=True)
+    name = Column(String, nullable=False)               # 展示名
+    branch = Column(String, nullable=True)
+    commit_sha = Column(String, nullable=True)
+    source = Column(String, nullable=True)              # push / merge_request_event
+    trigger_name = Column(String, nullable=True)        # 触发人员
+    trigger_email = Column(String, nullable=True)
+    status = Column(String, default="success")          # success / failed
+    pipeline_url = Column(String, nullable=True)        # 跳转 GitLab
+    duration = Column(Integer, nullable=True)           # 秒
+    coverage = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    jobs = relationship("CIReportJob", back_populates="report",
+                        cascade="all, delete-orphan", order_by="CIReportJob.id")
+
+
+class CIReportJob(Base):
+    """持续集成报告 - 各 job 明细"""
+    __tablename__ = "ci_report_jobs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ci_report_id = Column(String, ForeignKey("ci_reports.id"), nullable=False)
+    name = Column(String, nullable=False)
+    stage = Column(String, nullable=True)
+    status = Column(String, nullable=True)
+    duration = Column(Integer, nullable=True)
+    coverage = Column(String, nullable=True)
+    web_url = Column(String, nullable=True)             # GitLab job 日志链接
+    log = Column(Text, nullable=True)                   # 清理后的执行日志
+    report = relationship("CIReport", back_populates="jobs")
+
+
 def get_db_session():
     """获取数据库会话的生成器"""
     from app.database import SessionLocal

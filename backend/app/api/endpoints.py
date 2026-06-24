@@ -1222,6 +1222,29 @@ def create_report_record(record: ReportRecordCreate, db: Session = Depends(get_d
     db.refresh(db_rec)
     return db_rec
 
+
+# ============== 持续集成报告（CI Reports）==============
+@router.post("/ci-reports", response_model=CIReportResponse)
+def create_ci_report(payload: CIReportCreate, db: Session = Depends(get_db)):
+    rec = CIReport(**payload.model_dump(exclude={"jobs"}))
+    for j in payload.jobs:
+        rec.jobs.append(CIReportJob(**j.model_dump()))
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+@router.get("/ci-reports", response_model=List[CIReportResponse])
+def list_ci_reports(db: Session = Depends(get_db)):
+    return db.query(CIReport).order_by(CIReport.created_at.desc()).all()
+
+@router.get("/ci-reports/{report_id}", response_model=CIReportDetailResponse)
+def get_ci_report(report_id: str, db: Session = Depends(get_db)):
+    rec = db.query(CIReport).filter(CIReport.id == report_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="CI report not found")
+    return rec
+
 # ============== 版本/迭代 ==============
 @router.get("/version-iterations", response_model=List[VersionIterationResponse])
 def get_versions(project_id: Optional[str] = None, db: Session = Depends(get_db)):

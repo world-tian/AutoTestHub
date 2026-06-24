@@ -12,6 +12,7 @@
 """
 import json
 import os
+import re
 import urllib.request
 import urllib.error
 
@@ -102,33 +103,64 @@ def icon(s):
     return ICON.get(s, "⚠️ " + s)
 
 
-def push_report(stages, overall, coverage):
-    rows = "".join(
-        f"<tr><td>{label}</td><td>{icon(stages[key])}</td></tr>"
-        for key, label in STAGE_LABELS
-    )
-    cov_row = f"<tr><td>覆盖率</td><td>{coverage or '-'}</td></tr>"
-    content = (
-        f"<p>分支 <b>{BRANCH}</b> @ {SHA} ｜ 来源 {SOURCE} ｜ "
-        f'<a href="{PIPE_URL}">流水线 #{IID}</a></p>'
-        f"<table border=1 cellspacing=0 cellpadding=4>{rows}{cov_row}</table>"
-    )
+_ANSI = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+_SECTION = re.compile(r"section_(start|end):\d+:[A-Za-z0-9_\-]+")
+
+
+def _clean_trace(t):
+    t = _ANSI.sub("", t)
+    t = _SECTION.sub("", t)
+    t = t.replace("\r\n", "\n").replace("\r", "\n")
+    return t.strip()
+
+
+def collect_jobs(jobs):
+    """把各 job 整理成明细（含清理后的日志），跳过 .post 自身。"""
+    out = []
+    for j in jobs:
+        stage = j.get("stage", "")
+        name = j.get("name", "")
+        if stage.startswith(".") or name == "report-notify":
+            continue
+        log = ""
+        if TOKEN and GL and PID:
+            try:
+                _, log = _req("GET", f"{GL}/projects/{PID}/jobs/{j.get('id')}/trace",
+                              headers={"PRIVATE-TOKEN": TOKEN})
+                log = _clean_trace(log)
+            except Exception as e:
+                log = f"(获取日志失败: {e})"
+        if len(log) > 20000:
+            log = "...(日志已截断，仅保留末尾)...\n" + log[-20000:]
+        dur = j.get("duration")
+        out.append({
+            "name": name, "stage": stage, "status": j.get("status"),
+            "duration": int(dur) if dur else None,
+            "coverage": f'{j["coverage"]}%' if j.get("coverage") is not None else None,
+            "web_url": j.get("web_url", ""), "log": log,
+        })
+    return out
+
+
+def push_ci_report(jobs_data, overall, coverage):
+    """整条流水线 + 各 job 明细，POST 到 AutoTestHub /api/ci-reports（持续集成报告 tab）。"""
+    total = sum(j["duration"] or 0 for j in jobs_data) or None
     payload = {
-        "name": f"CI {icon(overall)} {BRANCH}@{SHA} (#{IID})",
-        "report_type": "ci",
-        "content": content,
-        "content_json": {
-            "overall": overall, "coverage": coverage, "branch": BRANCH,
-            "commit": SHA, "source": SOURCE, "pipeline_url": PIPE_URL,
-            "stages": stages,
-        },
+        "pipeline_iid": int(IID) if str(IID).isdigit() else None,
+        "pipeline_id": PIPE or None,
+        "name": f"CI #{IID} {BRANCH} @ {SHA}",
+        "branch": BRANCH, "commit_sha": SHA, "source": SOURCE,
+        "trigger_name": GL_USER_NAME or None, "trigger_email": GL_USER_EMAIL or None,
+        "status": overall, "pipeline_url": PIPE_URL,
+        "duration": total, "coverage": coverage,
+        "jobs": jobs_data,
     }
     try:
-        code, txt = _req("POST", f"{HUB}/api/report-records", data=payload,
+        code, txt = _req("POST", f"{HUB}/api/ci-reports", data=payload,
                          headers={"Content-Type": "application/json"})
-        print(f"云端上报: HTTP {code} -> {HUB}/reports")
+        print(f"CI 报告上报: HTTP {code} ({len(jobs_data)} jobs) -> {HUB}/reports")
     except Exception as e:
-        print(f"WARN: 云端上报失败: {e}")
+        print(f"WARN: CI 报告上报失败: {e}")
 
 
 def build_text(stages, overall, coverage):
@@ -222,7 +254,7 @@ def main():
     jobs = fetch_jobs()
     stages, overall, coverage = summarize(jobs)
     print(f"汇总: overall={overall} stages={stages} coverage={coverage}")
-    push_report(stages, overall, coverage)
+    push_ci_report(collect_jobs(jobs), overall, coverage)
     notify_feishu(build_text(stages, overall, coverage))
 
 

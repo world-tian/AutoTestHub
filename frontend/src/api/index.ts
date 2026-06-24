@@ -736,6 +736,44 @@ export interface ReportRecord {
     created_at: string;
 }
 
+export interface CIReportJob {
+    id: number;
+    name: string;
+    stage?: string;
+    status?: string;
+    duration?: number;
+    coverage?: string;
+    web_url?: string;
+    log?: string;
+}
+
+export interface CIReport {
+    id: string;
+    pipeline_iid?: number;
+    name: string;
+    branch?: string;
+    commit_sha?: string;
+    source?: string;
+    trigger_name?: string;
+    trigger_email?: string;
+    status: string;
+    pipeline_url?: string;
+    duration?: number;
+    coverage?: string;
+    created_at: string;
+    jobs?: CIReportJob[];
+}
+
+export const getCIReports = async () => {
+    const response = await api.get<CIReport[]>('/ci-reports');
+    return response.data;
+};
+
+export const getCIReport = async (id: string) => {
+    const response = await api.get<CIReport>(`/ci-reports/${id}`);
+    return response.data;
+};
+
 export const getReportTemplates = async (template_type?: string) => {
     const params = template_type ? { template_type } : {};
     const response = await api.get<ReportTemplate[]>('/report-templates', { params });

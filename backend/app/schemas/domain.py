@@ -10,6 +10,9 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+class FeishuLoginRequest(BaseModel):
+    code: str
+
 class UserBase(BaseModel):
     username: str
     email: str

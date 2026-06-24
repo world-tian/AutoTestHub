@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     AI_BASE_URL: str = ""
     AI_MODEL_NAME: str = ""
 
+    FEISHU_APP_ID: str = ""
+    FEISHU_APP_SECRET: str = ""
+    FEISHU_REDIRECT_URI: str = ""
+
     class Config:
         env_file = "../.env"
 

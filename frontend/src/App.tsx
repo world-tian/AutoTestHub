@@ -18,6 +18,7 @@ import {
     TagsOutlined
 } from '@ant-design/icons';
 import { Login } from './pages/Login';
+import { FeishuCallback } from './pages/FeishuCallback';
 import { Projects } from './pages/Projects';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { Settings } from './pages/Settings';
@@ -220,6 +221,7 @@ const App: React.FC = () => {
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/login/feishu/callback" element={<FeishuCallback />} />
         <Route path="/" element={<PrivateRoute><MainLayout><Dashboard /></MainLayout></PrivateRoute>} />
         <Route path="/projects" element={<PrivateRoute><MainLayout><Projects /></MainLayout></PrivateRoute>} />
         <Route path="/projects/:id" element={<PrivateRoute><MainLayout><ProjectDetail /></MainLayout></PrivateRoute>} />

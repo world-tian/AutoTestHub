@@ -10,6 +10,7 @@ from app.models.domain import *
 from app.schemas.domain import *
 from app.core.security import verify_password, create_access_token
 from app.services.ai_service import get_ai_provider, reset_ai_provider, PROVIDER_CONFIGS
+from app.services.feishu import feishu_service
 from app.core.config import settings
 
 router = APIRouter()
@@ -20,6 +21,114 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     if not user or not verify_password(user_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+# ============ 飞书扫码登录接口 ============
+
+@router.get("/auth/feishu/url")
+def get_feishu_auth_url(db: Session = Depends(get_db)):
+    """获取飞书登录授权重定向 URL"""
+    app_id = feishu_service.get_config(db, "feishu_app_id")
+    redirect_uri = feishu_service.get_config(db, "feishu_redirect_uri")
+    
+    if not app_id or not redirect_uri:
+        raise HTTPException(status_code=400, detail="飞书集成参数未配置，请联系系统管理员在后端或数据库配置")
+        
+    auth_url = (
+        f"https://open.feishu.cn/open-apis/authen/v1/index"
+        f"?redirect_uri={redirect_uri}"
+        f"&app_id={app_id}"
+        f"&state=autotesthub_feishu_login"
+    )
+    return {"url": auth_url}
+
+
+@router.post("/auth/feishu/login", response_model=Token)
+async def feishu_login(login_req: FeishuLoginRequest, db: Session = Depends(get_db)):
+    """处理飞书回调的 code，执行登录或自动注册绑定"""
+    # 1. 向飞书换取用户信息
+    user_info = await feishu_service.get_user_info(db, login_req.code)
+    open_id = user_info.get("open_id")
+    union_id = user_info.get("union_id")
+    name = user_info.get("name")
+    email = user_info.get("email")
+    
+    if not open_id:
+        raise HTTPException(status_code=400, detail="解析飞书用户信息失败，未包含有效的 OpenID")
+
+    # 2. 查询该飞书用户是否已绑定平台账号
+    social_account = db.query(UserSocial).filter(
+        UserSocial.provider == "feishu",
+        UserSocial.uid == open_id
+    ).first()
+    
+    user = None
+    if social_account:
+        # 已绑定，直接登录该账号
+        user = db.query(User).filter(User.id == social_account.user_id).first()
+    
+    if not user:
+        # 未绑定，但如果飞书提供了邮箱，且该邮箱已在系统中注册，则执行自动关联绑定
+        if email:
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                # 建立绑定关系
+                new_social = UserSocial(
+                    user_id=user.id,
+                    provider="feishu",
+                    uid=open_id,
+                    union_id=union_id,
+                    extra_data=user_info
+                )
+                db.add(new_social)
+                db.commit()
+
+    if not user:
+        # 无任何可匹配用户，自动创建新账号并完成绑定
+        base_username = f"feishu_{open_id[:8]}"
+        username = base_username
+        # 兜底防重名
+        counter = 1
+        while db.query(User).filter(User.username == username).first():
+            username = f"{base_username}_{counter}"
+            counter += 1
+            
+        # 默认密码不可用，占位
+        from app.core.security import get_password_hash
+        import secrets
+        random_pwd = secrets.token_urlsafe(16)
+        hashed_password = get_password_hash(random_pwd)
+        
+        user = User(
+            username=username,
+            email=email if email else f"{open_id[:8]}@feishu.user",
+            hashed_password=hashed_password,
+            is_active=True,
+            is_superuser=False
+        )
+        db.add(user)
+        db.flush() # 获得 user.id
+        
+        new_social = UserSocial(
+            user_id=user.id,
+            provider="feishu",
+            uid=open_id,
+            union_id=union_id,
+            extra_data=user_info
+        )
+        db.add(new_social)
+        db.commit()
+        db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="该绑定用户已被冻结，请联系管理员")
+
+    # 3. 生成平台 JWT Token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires

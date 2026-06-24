@@ -17,6 +17,20 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    social_accounts = relationship("UserSocial", back_populates="user", cascade="all, delete-orphan")
+
+class UserSocial(Base):
+    __tablename__ = "user_socials"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"))
+    provider = Column(String, default="feishu")
+    uid = Column(String, index=True, nullable=False) # 飞书 open_id
+    union_id = Column(String, index=True, nullable=True) # 飞书 union_id
+    extra_data = Column(JSON, nullable=True) # 飞书原始信息
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="social_accounts")
 
 class Project(Base):
     __tablename__ = "projects"

@@ -3,9 +3,11 @@ from app.database import SessionLocal, Base, engine
 from app.models.domain import User, Project, Requirement, TestCase, ExecutionRun, ExecutionResult, Config, ScheduledTask
 from app.models.device import Device, DevicePool, Agent, ExecutionQueue
 from app.core.security import get_password_hash
+from app.migrate_config import init_config
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    init_config()
     db = SessionLocal()
     
     # Create default admin

@@ -94,6 +94,22 @@ def init_config():
                 "value": "",
                 "description": "企业微信群机器人Webhook地址"
             },
+            # ==================== 飞书扫码登录配置 ====================
+            {
+                "key": "feishu_app_id",
+                "value": "",
+                "description": "飞书扫码登录 App ID"
+            },
+            {
+                "key": "feishu_app_secret",
+                "value": "",
+                "description": "飞书扫码登录 App Secret"
+            },
+            {
+                "key": "feishu_redirect_uri",
+                "value": "",
+                "description": "飞书扫码登录重定向地址 (Redirect URI)"
+            },
             # ==================== 需求源配置 ====================
             {
                 "key": "jira_url",

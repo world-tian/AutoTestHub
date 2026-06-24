@@ -333,6 +333,32 @@ export const Settings: React.FC = () => {
                                         >
                                             <Input placeholder="例如：https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx" />
                                         </Form.Item>
+
+                                        <Divider orientation="left">飞书扫码登录配置</Divider>
+
+                                        <Form.Item
+                                            name="feishu_app_id"
+                                            label="飞书 App ID"
+                                            extra={getConfigDescription('feishu_app_id')}
+                                        >
+                                            <Input placeholder="例如：cli_aabc16e6d778dcd9" />
+                                        </Form.Item>
+
+                                        <Form.Item
+                                            name="feishu_app_secret"
+                                            label="飞书 App Secret"
+                                            extra={getConfigDescription('feishu_app_secret')}
+                                        >
+                                            <Input.Password placeholder="输入飞书 App Secret" />
+                                        </Form.Item>
+
+                                        <Form.Item
+                                            name="feishu_redirect_uri"
+                                            label="飞书重定向地址 (Redirect URI)"
+                                            extra={getConfigDescription('feishu_redirect_uri')}
+                                        >
+                                            <Input placeholder="例如：http://120.79.207.52:15173/login/feishu/callback" />
+                                        </Form.Item>
                                     </Card>
                                 )
                             },

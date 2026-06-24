@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
+import { api } from './api';
 import { Layout, Menu, Button } from 'antd';
 import { 
     ProjectOutlined, 
@@ -45,6 +46,18 @@ const PrivateRoute = ({ children }: { children: JSX.Element }) => {
 
 const MainLayout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
+  const [currentUser, setCurrentUser] = useState<{ username: string; email?: string } | null>(null);
+
+  useEffect(() => {
+    api.get('/auth/me')
+      .then(res => {
+        setCurrentUser(res.data);
+      })
+      .catch(err => {
+        console.error('获取用户信息失败', err);
+      });
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     window.location.href = '/login';
@@ -187,12 +200,81 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
               }
             ]}
           />
-          <div style={{ padding: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.1)', flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+          <div style={{ 
+            padding: '16px', 
+            borderTop: '1px solid rgba(255, 255, 255, 0.15)', 
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            {currentUser && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 4px' }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #1890ff 0%, #722ed1 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  fontSize: '16px',
+                  boxShadow: '0 2px 8px rgba(24, 144, 255, 0.3)',
+                  textTransform: 'uppercase',
+                  flexShrink: 0
+                }}>
+                  {currentUser.username ? currentUser.username[0] : 'U'}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
+                  <span style={{ 
+                    color: '#fff', 
+                    fontWeight: 500, 
+                    fontSize: '14px',
+                    whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis',
+                    overflow: 'hidden'
+                  }} title={currentUser.username}>
+                    {currentUser.username}
+                  </span>
+                  {currentUser.email && (
+                    <span style={{ 
+                      color: 'rgba(255, 255, 255, 0.45)', 
+                      fontSize: '12px',
+                      whiteSpace: 'nowrap',
+                      textOverflow: 'ellipsis',
+                      overflow: 'hidden'
+                    }} title={currentUser.email}>
+                      {currentUser.email}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
             <Button 
               type="text" 
               icon={<LogoutOutlined />} 
               onClick={handleLogout} 
-              style={{ color: 'rgba(255, 255, 255, 0.65)' }}
+              style={{ 
+                color: 'rgba(255, 255, 255, 0.65)', 
+                width: '100%', 
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '6px',
+                transition: 'all 0.3s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.background = 'rgba(255, 77, 79, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.65)';
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+              }}
             >
               退出登录
             </Button>

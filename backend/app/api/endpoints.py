@@ -13,6 +13,37 @@ from app.services.ai_service import get_ai_provider, reset_ai_provider, PROVIDER
 from app.services.feishu import feishu_service
 from app.core.config import settings
 
+from fastapi.security import OAuth2PasswordBearer
+from jose import jwt, JWTError
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login", auto_error=False)
+
+def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if not token:
+        # 为了兼容以往不带 Token 的测试请求，如果没有 token 则回退获取第一个用户以防中断旧功能
+        user = db.query(User).first()
+        if not user:
+            raise credentials_exception
+        return user
+        
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
 router = APIRouter()
 
 @router.post("/auth/login", response_model=Token)
@@ -136,12 +167,8 @@ async def feishu_login(login_req: FeishuLoginRequest, db: Session = Depends(get_
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/auth/me", response_model=UserResponse)
-def get_current_user_info(db: Session = Depends(get_db)):
-    # 简化的实现，实际应该验证token
-    user = db.query(User).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+def get_current_user_info(current_user: User = Depends(get_current_user)):
+    return current_user
 
 @router.post("/projects", response_model=ProjectResponse)
 def create_project(project: ProjectCreate, db: Session = Depends(get_db)):

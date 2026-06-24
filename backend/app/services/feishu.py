@@ -20,6 +20,7 @@ class FeishuService:
     async def get_app_access_token(self, db: Session) -> str:
         app_id = self.get_config(db, "feishu_app_id")
         app_secret = self.get_config(db, "feishu_app_secret")
+        print(f"DEBUG CREDENTIALS: app_id={app_id}, app_secret={app_secret[:6] if app_secret else ''}****", flush=True)
         
         if not app_id or not app_secret:
             raise HTTPException(status_code=400, detail="飞书 App ID 或 Secret 未配置，请联系系统管理员")
@@ -32,6 +33,7 @@ class FeishuService:
                     "app_secret": app_secret
                 }, timeout=10.0)
                 res_data = response.json()
+                print(f"DEBUG TOKEN RESPONSE: {res_data}", flush=True)
                 if res_data.get("code") != 0:
                     raise HTTPException(status_code=400, detail=f"获取飞书 App Access Token 失败: {res_data.get('msg')}")
                 return res_data["app_access_token"]
@@ -40,7 +42,8 @@ class FeishuService:
 
     async def get_user_info(self, db: Session, code: str) -> dict:
         app_access_token = await self.get_app_access_token(db)
-        url = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
+        print(f"DEBUG TOKEN USED: {app_access_token[:15]}...", flush=True)
+        url = "https://open.feishu.cn/open-apis/authen/v1/access_token"
         headers = {
             "Authorization": f"Bearer {app_access_token}",
             "Content-Type": "application/json; charset=utf-8"
@@ -52,6 +55,7 @@ class FeishuService:
                     "code": code
                 }, headers=headers, timeout=10.0)
                 res_data = response.json()
+                print(f"DEBUG USER RESPONSE: {res_data}", flush=True)
                 if res_data.get("code") != 0:
                     raise HTTPException(status_code=400, detail=f"解析飞书授权 Code 失败: {res_data.get('msg')}")
                 return res_data.get("data", {})

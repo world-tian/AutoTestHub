@@ -165,12 +165,25 @@ deploy-local:
     - docker compose up -d --build
     - docker compose ps
 
-# 4b. master(合入即上线) / release(版本发布)：部署到生产服务器
+# 4b. 部署到服务器：master→生产(15173)；release→独立预发布环境(15273)
+#     同机不同 compose 项目名 + 端口 + 目录，互相隔离，各自独立 DB 卷
 deploy-to-server:
   stage: deploy
   extends: [.linux-node]
-  rules: *rules-prod
   dependencies: [frontend-build]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      variables:
+        DEPLOY_DIR: "/opt/autotesthub"
+        COMPOSE_PROJECT: "autotesthub"
+        DEPLOY_PORT: "15173"
+        ENV_NAME: "生产 production"
+    - if: '$CI_COMMIT_BRANCH =~ /^release/'
+      variables:
+        DEPLOY_DIR: "/opt/autotesthub-release"
+        COMPOSE_PROJECT: "autotesthub-release"
+        DEPLOY_PORT: "15273"
+        ENV_NAME: "预发布 release"
   before_script:
     - eval $(ssh-agent -s)
     - 'if [ -f "$SSH_PRIVATE_KEY" ]; then chmod 400 "$SSH_PRIVATE_KEY" && ssh-add "$SSH_PRIVATE_KEY" > /dev/null; else echo "$SSH_PRIVATE_KEY" | tr -d "\r" | ssh-add - > /dev/null; fi'
@@ -178,11 +191,11 @@ deploy-to-server:
     - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
-    - echo "Deploying to production $DEPLOY_HOST ($CI_COMMIT_REF_NAME) ..."
-    - ssh $DEPLOY_USER@$DEPLOY_HOST "mkdir -p /opt/autotesthub"
-    - rsync -avz --delete --exclude '.git/' --exclude 'frontend/node_modules/' --exclude 'backend/venv/' --exclude 'data/' ./ $DEPLOY_USER@$DEPLOY_HOST:/opt/autotesthub/
-    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /opt/autotesthub && docker compose down --remove-orphans && docker compose up -d --build && docker compose ps"
-    - 'echo "Deployed: http://$DEPLOY_HOST:15173"'
+    - echo "Deploying [$ENV_NAME] -> $DEPLOY_HOST:$DEPLOY_PORT ($CI_COMMIT_REF_NAME)"
+    - ssh $DEPLOY_USER@$DEPLOY_HOST "mkdir -p $DEPLOY_DIR"
+    - rsync -avz --delete --exclude '.git/' --exclude 'frontend/node_modules/' --exclude 'backend/venv/' --exclude 'data/' ./ $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/
+    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd $DEPLOY_DIR && COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT FRONTEND_PORT=$DEPLOY_PORT docker compose down --remove-orphans; COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT FRONTEND_PORT=$DEPLOY_PORT docker compose up -d --build && COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT docker compose ps"
+    - 'echo "Deployed [$ENV_NAME]: http://$DEPLOY_HOST:$DEPLOY_PORT"'
 
 # ============================================================
 # 5. 测试
@@ -200,18 +213,20 @@ app-smoke-test:
     - curl -fsS "http://localhost:$FRONTEND_PORT/" >/dev/null && echo "前端可访问 OK"
     - 'curl -fsS "http://localhost:$FRONTEND_PORT/api/defects" >/dev/null && echo "后端 /api 可访问 OK" || echo "WARN: /api 冒烟未通过(接口可能需鉴权/数据，先不阻断)"'
 
-# 5b. master/release：部署后对【生产】做接口冒烟（确认线上真起来了）
-prod-smoke:
+# 5b. 部署后对已部署环境做接口冒烟：master→生产(15173)；release→预发布(15273)
+smoke-deployed:
   stage: test
   extends: [.linux-node]
-  rules: *rules-prod
-  variables:
-    PROD_URL: "http://120.79.207.52:15173"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      variables: { SMOKE_URL: "http://120.79.207.52:15173", ENV_NAME: "生产" }
+    - if: '$CI_COMMIT_BRANCH =~ /^release/'
+      variables: { SMOKE_URL: "http://120.79.207.52:15273", ENV_NAME: "预发布" }
   script:
-    - echo "等待线上实例就绪..."
-    - for i in $(seq 1 20); do curl -fsS "$PROD_URL/" >/dev/null 2>&1 && break || sleep 3; done
-    - curl -fsS "$PROD_URL/" >/dev/null && echo "线上前端可访问 OK"
-    - 'curl -fsS "$PROD_URL/api/ci-reports" >/dev/null && echo "线上后端 /api 可访问 OK" || echo "WARN: 线上 /api 冒烟未通过"'
+    - echo "等待 [$ENV_NAME] 实例就绪..."
+    - for i in $(seq 1 20); do curl -fsS "$SMOKE_URL/" >/dev/null 2>&1 && break || sleep 3; done
+    - curl -fsS "$SMOKE_URL/" >/dev/null && echo "[$ENV_NAME] 前端可访问 OK"
+    - 'curl -fsS "$SMOKE_URL/api/ci-reports" >/dev/null && echo "[$ENV_NAME] 后端 /api 可访问 OK" || echo "WARN: [$ENV_NAME] /api 冒烟未通过"'
 
 # 5c. MR/release：autotestrunner demo plan（Windows）
 autotestrunner-demo:

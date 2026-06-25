@@ -3,6 +3,10 @@
 用 FastAPI TestClient 直接打 `/api`，提升单测覆盖率（不再只是冒烟）。
 """
 
+from app.api.endpoints import get_current_user
+from app.main import app
+from app.models.domain import User
+
 
 def test_root(client):
     r = client.get("/")
@@ -104,3 +108,17 @@ def test_release_artifact_create_list_and_detail(client):
     r = client.post("/api/artifacts", json=payload)
     assert r.status_code == 200
     assert r.json()["id"] == artifact["id"]
+
+    app.dependency_overrides[get_current_user] = lambda: User(
+        username="admin",
+        email="admin@example.com",
+        is_superuser=True,
+    )
+    try:
+        r = client.delete(f"/api/artifacts/{artifact['id']}")
+        assert r.status_code == 200
+
+        r = client.get(f"/api/artifacts/{artifact['id']}")
+        assert r.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)

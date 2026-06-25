@@ -1285,6 +1285,22 @@ def get_artifact(artifact_id: str, db: Session = Depends(get_db)):
     return rec
 
 
+@router.delete("/artifacts/{artifact_id}")
+def delete_artifact(
+    artifact_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not (current_user.is_superuser or current_user.username == "admin"):
+        raise HTTPException(status_code=403, detail="Only administrators can delete artifacts")
+    rec = db.query(ReleaseArtifact).filter(ReleaseArtifact.id == artifact_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    db.delete(rec)
+    db.commit()
+    return {"message": "Artifact deleted"}
+
+
 @router.get("/version-iterations", response_model=List[VersionIterationResponse])
 def get_versions(project_id: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(VersionIteration)

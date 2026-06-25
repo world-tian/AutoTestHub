@@ -5,6 +5,7 @@ import {
     Col,
     DatePicker,
     Modal,
+    Popconfirm,
     Row,
     Segmented,
     Select,
@@ -16,8 +17,8 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import { DownloadOutlined, ExperimentOutlined, LinkOutlined, ReloadOutlined } from '@ant-design/icons';
-import { ReleaseArtifact, getReleaseArtifacts } from '../api';
+import { DeleteOutlined, DownloadOutlined, ExperimentOutlined, LinkOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ReleaseArtifact, api, deleteReleaseArtifact, getReleaseArtifacts } from '../api';
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
@@ -83,6 +84,7 @@ export const Artifacts: React.FC = () => {
     const [timeQuickFilter, setTimeQuickFilter] = useState<TimeQuickFilter>('all');
     const [customRange, setCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
     const [viewingArtifact, setViewingArtifact] = useState<ReleaseArtifact | null>(null);
+    const [isAdmin, setIsAdmin] = useState(false);
 
     const versionOptions = useMemo(() => (
         Array.from(new Set(allArtifacts.map((item) => item.version).filter(Boolean)))
@@ -127,7 +129,18 @@ export const Artifacts: React.FC = () => {
 
     useEffect(() => {
         loadArtifacts();
+        api.get('/auth/me')
+            .then((res) => setIsAdmin(res.data?.is_superuser || res.data?.username === 'admin'))
+            .catch(() => setIsAdmin(false));
     }, []);
+
+    const handleDeleteArtifact = async (artifactId: string) => {
+        await deleteReleaseArtifact(artifactId);
+        if (viewingArtifact?.id === artifactId) {
+            setViewingArtifact(null);
+        }
+        await loadArtifacts();
+    };
 
     const resetFilters = () => {
         setArtifactVersion(undefined);
@@ -173,6 +186,20 @@ export const Artifacts: React.FC = () => {
                         <Button type="link" size="small" icon={<LinkOutlined />} onClick={() => window.open(record.pipeline_url, '_blank')}>
                             流水线
                         </Button>
+                    )}
+                    {isAdmin && (
+                        <Popconfirm
+                            title="确认删除该制品记录？"
+                            description="只删除 AutoTestHub 中的制品元数据，不会删除 GitLab 里的 artifact 文件。"
+                            okText="删除"
+                            cancelText="取消"
+                            okButtonProps={{ danger: true }}
+                            onConfirm={() => handleDeleteArtifact(record.id)}
+                        >
+                            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                                删除
+                            </Button>
+                        </Popconfirm>
                     )}
                 </Space>
             )
@@ -246,6 +273,18 @@ export const Artifacts: React.FC = () => {
                             <Button type="primary" icon={<DownloadOutlined />} onClick={() => window.open(viewingArtifact.download_url, '_blank')}>
                                 下载制品
                             </Button>
+                        )}
+                        {isAdmin && viewingArtifact && (
+                            <Popconfirm
+                                title="确认删除该制品记录？"
+                                description="只删除 AutoTestHub 中的制品元数据，不会删除 GitLab 里的 artifact 文件。"
+                                okText="删除"
+                                cancelText="取消"
+                                okButtonProps={{ danger: true }}
+                                onConfirm={() => handleDeleteArtifact(viewingArtifact.id)}
+                            >
+                                <Button danger icon={<DeleteOutlined />}>删除</Button>
+                            </Popconfirm>
                         )}
                     </Space>
                 )}

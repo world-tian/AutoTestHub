@@ -803,6 +803,11 @@ export const getReleaseArtifacts = async (params?: {
     return response.data;
 };
 
+export const deleteReleaseArtifact = async (artifactId: string) => {
+    const response = await api.delete(`/artifacts/${artifactId}`);
+    return response.data;
+};
+
 export const getReportTemplates = async (template_type?: string) => {
     const params = template_type ? { template_type } : {};
     const response = await api.get<ReportTemplate[]>('/report-templates', { params });

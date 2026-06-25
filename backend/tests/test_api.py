@@ -68,3 +68,39 @@ def test_ci_report_create_and_detail(client):
     body = r.json()
     assert body["trigger_name"] == "ut"
     assert len(body["jobs"]) == 2
+
+
+def test_release_artifact_create_list_and_detail(client):
+    payload = {
+        "version": "1.2.0-pvt",
+        "name": "autotesthub-1.2.0-pvt.tar.gz",
+        "branch": "release/1.2.0-pvt",
+        "commit_sha": "abc1234",
+        "pipeline_id": "100",
+        "pipeline_iid": 12,
+        "pipeline_url": "http://gitlab/pipelines/100",
+        "job_id": "200",
+        "job_url": "http://gitlab/jobs/200",
+        "download_url": "http://gitlab/jobs/200/artifacts/file/dist-pkg/autotesthub-1.2.0-pvt.tar.gz",
+        "file_name": "dist-pkg/autotesthub-1.2.0-pvt.tar.gz",
+        "file_size": 1024,
+        "file_sha256": "f" * 64,
+        "storage_type": "gitlab_artifact",
+    }
+    r = client.post("/api/artifacts", json=payload)
+    assert r.status_code == 200
+    artifact = r.json()
+    assert artifact["version"] == payload["version"]
+    assert artifact["file_size"] == 1024
+
+    r = client.get("/api/artifacts", params={"version": "1.2"})
+    assert r.status_code == 200
+    assert any(item["id"] == artifact["id"] for item in r.json())
+
+    r = client.get(f"/api/artifacts/{artifact['id']}")
+    assert r.status_code == 200
+    assert r.json()["download_url"] == payload["download_url"]
+
+    r = client.post("/api/artifacts", json=payload)
+    assert r.status_code == 200
+    assert r.json()["id"] == artifact["id"]

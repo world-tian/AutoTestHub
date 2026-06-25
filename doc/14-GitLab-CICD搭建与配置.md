@@ -340,3 +340,15 @@ gitlab/gitlab-ce      0.0.0.0:80->80/tcp ...   # 独立 Docker 网络，互不�
 
 > 维护：本文件同时存于仓库 `doc/14-GitLab-CICD搭建与配置.md`，与飞书 wiki 同步。
 > 最后更新：2026-06-24
+---
+
+## 2026-06-25 更新：待办 6 制品管理基础版
+
+状态：✅ 基础版已完成。
+
+- 后端新增 `release_artifacts` 表，登记版本号、分支、commit、pipeline/job 链接、下载地址、包大小、SHA256、构建时间等元数据。
+- 后端新增 `/api/artifacts`、`/api/artifacts/{id}`，支持创建、列表、按版本模糊筛选、按分支精确筛选。
+- CI `package-release` 出包后计算包大小和 SHA256，并把 GitLab artifact 直达下载链接 POST 到 AutoTestHub；上报失败不阻断发布，避免首次上线接口尚未部署时卡住 release。
+- 前端 `/reports` 新增「制品管理」tab，支持制品统计、版本/分支筛选、下载制品、跳转流水线和出包 job。
+- 已补后端接口单元测试，前端构建通过。
+- 新增 `ci/import_gitlab_artifacts.py` 和手动 CI job `import-gitlab-artifacts`：可从 GitLab 历史 `package-release` job 回填现有 release 制品元数据；接口按 `job_id` / `version+pipeline_id` 幂等去重，重复执行不会刷重复记录。

@@ -1246,6 +1246,45 @@ def get_ci_report(report_id: str, db: Session = Depends(get_db)):
     return rec
 
 # ============== 版本/迭代 ==============
+# ============== Release artifacts ==============
+@router.post("/artifacts", response_model=ReleaseArtifactResponse)
+def create_artifact(payload: ReleaseArtifactCreate, db: Session = Depends(get_db)):
+    if payload.job_id:
+        existing = db.query(ReleaseArtifact).filter(ReleaseArtifact.job_id == payload.job_id).first()
+        if existing:
+            return existing
+    if payload.version and payload.pipeline_id:
+        existing = db.query(ReleaseArtifact).filter(
+            ReleaseArtifact.version == payload.version,
+            ReleaseArtifact.pipeline_id == payload.pipeline_id
+        ).first()
+        if existing:
+            return existing
+    rec = ReleaseArtifact(**payload.model_dump())
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+
+@router.get("/artifacts", response_model=List[ReleaseArtifactResponse])
+def list_artifacts(version: Optional[str] = None, branch: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(ReleaseArtifact)
+    if version:
+        query = query.filter(ReleaseArtifact.version.contains(version))
+    if branch:
+        query = query.filter(ReleaseArtifact.branch == branch)
+    return query.order_by(ReleaseArtifact.created_at.desc()).all()
+
+
+@router.get("/artifacts/{artifact_id}", response_model=ReleaseArtifactResponse)
+def get_artifact(artifact_id: str, db: Session = Depends(get_db)):
+    rec = db.query(ReleaseArtifact).filter(ReleaseArtifact.id == artifact_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return rec
+
+
 @router.get("/version-iterations", response_model=List[VersionIterationResponse])
 def get_versions(project_id: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(VersionIteration)

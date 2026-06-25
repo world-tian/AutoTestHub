@@ -591,3 +591,30 @@ class CIReportResponse(BaseModel):
 class CIReportDetailResponse(CIReportResponse):
     jobs: List[CIReportJobResponse] = []
 
+
+# ============== Release artifacts ==============
+class ReleaseArtifactCreate(BaseModel):
+    version: str
+    name: str
+    branch: Optional[str] = None
+    commit_sha: Optional[str] = None
+    pipeline_id: Optional[str] = None
+    pipeline_iid: Optional[int] = None
+    pipeline_url: Optional[str] = None
+    job_id: Optional[str] = None
+    job_url: Optional[str] = None
+    download_url: Optional[str] = None
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    file_sha256: Optional[str] = None
+    storage_type: str = "gitlab_artifact"
+    built_at: Optional[datetime] = None
+    extra_data: Optional[Dict[str, Any]] = None
+
+
+class ReleaseArtifactResponse(ReleaseArtifactCreate):
+    id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

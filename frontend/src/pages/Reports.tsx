@@ -1,162 +1,126 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Table,
     Button,
-    Modal,
-    Form,
-    Space,
-    Tag,
     Card,
-    DatePicker,
-    message,
-    Typography,
-    Row,
     Col,
+    DatePicker,
+    Form,
+    Modal,
+    Row,
+    Space,
     Statistic,
-    Tabs
+    Table,
+    Tabs,
+    Tag,
+    Typography,
+    message
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { BarChartOutlined, FileSearchOutlined, LinkOutlined, RobotOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import {
-    BarChartOutlined,
-    DownloadOutlined,
-    RobotOutlined
-} from '@ant-design/icons';
-import {
-    getReportRecords,
+    CIReport,
+    CIReportJob,
+    ExecutionRun,
+    Project,
+    ReportRecord,
     generateDailyReport,
     generateWeeklyReport,
-    ReportRecord,
     getAllExecutionRuns,
-    ExecutionRun,
-    getProjects,
-    Project,
-    getCIReports,
     getCIReport,
-    CIReport,
-    CIReportJob
+    getCIReports,
+    getProjects,
+    getReportRecords
 } from '../api';
-import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
+
+const formatDateTime = (date?: string) => {
+    if (!date) return '-';
+    return new Date(date).toLocaleString('zh-CN', { hour12: false });
+};
+
+const formatDate = (date?: string) => {
+    if (!date) return '-';
+    return new Date(date).toLocaleDateString('zh-CN');
+};
+
+const formatDuration = (sec?: number) => {
+    if (sec === undefined || sec === null) return '-';
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m > 0 ? `${m}分${s}秒` : `${s}秒`;
+};
+
+const statusTag = (status?: string) => {
+    const map: Record<string, [string, string]> = {
+        pending: ['orange', '待执行'],
+        running: ['cyan', '执行中'],
+        completed: ['green', '已完成'],
+        success: ['green', '成功'],
+        failed: ['red', '失败'],
+        skipped: ['default', '跳过'],
+        canceled: ['orange', '已取消'],
+        manual: ['purple', '手动']
+    };
+    const [color, label] = map[status || ''] || ['default', status || '-'];
+    return <Tag color={color}>{label}</Tag>;
+};
 
 export const Reports: React.FC = () => {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('executions');
-    const [records, setRecords] = useState<ReportRecord[]>([]);
-    const [executions, setExecutions] = useState<ExecutionRun[]>([]);
-    const [projectsMap, setProjectsMap] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(false);
+    const [projectsMap, setProjectsMap] = useState<Record<string, string>>({});
+    const [executions, setExecutions] = useState<ExecutionRun[]>([]);
+    const [ciReports, setCiReports] = useState<CIReport[]>([]);
+    const [records, setRecords] = useState<ReportRecord[]>([]);
+    const [viewingReport, setViewingReport] = useState<ReportRecord | null>(null);
+    const [viewingCI, setViewingCI] = useState<CIReport | null>(null);
     const [genModalVisible, setGenModalVisible] = useState(false);
     const [genType, setGenType] = useState<'daily' | 'weekly'>('daily');
-    const [genDate, setGenDate] = useState<string>(dayjs().format('YYYY-MM-DD'));
-    const [viewingReport, setViewingReport] = useState<ReportRecord | null>(null);
-    const [ciReports, setCiReports] = useState<CIReport[]>([]);
-    const [viewingCI, setViewingCI] = useState<CIReport | null>(null);
+    const [genDate, setGenDate] = useState(dayjs().format('YYYY-MM-DD'));
+
+    const loadProjectsMap = async () => {
+        if (Object.keys(projectsMap).length > 0) return;
+        const projects = await getProjects();
+        const nextMap: Record<string, string> = {};
+        projects.forEach((project: Project) => {
+            nextMap[project.id] = project.name;
+        });
+        setProjectsMap(nextMap);
+    };
 
     const loadData = async () => {
         setLoading(true);
         try {
-            // Load projects once to map project IDs to names
-            if (Object.keys(projectsMap).length === 0) {
-                const projects = await getProjects();
-                const pMap: Record<string, string> = {};
-                projects.forEach((p: Project) => {
-                    pMap[p.id] = p.name;
-                });
-                setProjectsMap(pMap);
-            }
-
+            await loadProjectsMap();
             if (activeTab === 'executions') {
-                const execData = await getAllExecutionRuns();
-                setExecutions(execData);
+                setExecutions(await getAllExecutionRuns());
             } else if (activeTab === 'ci') {
                 setCiReports(await getCIReports());
             } else {
-                const recordData = await getReportRecords();
-                setRecords(recordData);
+                setRecords(await getReportRecords());
             }
         } catch (error) {
-            console.error('Failed to load data:', error);
+            console.error('Failed to load reports:', error);
         } finally {
             setLoading(false);
         }
     };
 
-    const fmtDuration = (sec?: number) => {
-        if (!sec && sec !== 0) return '-';
-        const m = Math.floor(sec / 60), s = sec % 60;
-        return m > 0 ? `${m}分${s}秒` : `${s}秒`;
-    };
-
-    const ciStatusTag = (status?: string) => {
-        const map: Record<string, [string, string]> = {
-            success: ['green', '成功'], failed: ['red', '失败'],
-            running: ['cyan', '运行中'], skipped: ['default', '跳过'],
-            canceled: ['orange', '已取消'], manual: ['purple', '手动'],
-        };
-        const [color, label] = map[status || ''] || ['default', status || '-'];
-        return <Tag color={color}>{label}</Tag>;
-    };
+    useEffect(() => {
+        loadData();
+    }, [activeTab]);
 
     const openCIDetail = async (record: CIReport) => {
         try {
-            setViewingCI(await getCIReport(record.id));   // 拉详情（含 jobs）
+            setViewingCI(await getCIReport(record.id));
         } catch {
             setViewingCI(record);
         }
     };
-
-    const ciColumns = [
-        {
-            title: '报告名称', dataIndex: 'name', key: 'name',
-            render: (text: string, r: CIReport) => (
-                <Button type="link" style={{ padding: 0 }} onClick={() => openCIDetail(r)}>{text}</Button>
-            ),
-        },
-        {
-            title: '分支', dataIndex: 'branch', key: 'branch',
-            render: (b: string, r: CIReport) => <span>{b} <Text type="secondary">@{r.commit_sha}</Text></span>,
-        },
-        { title: '触发人员', dataIndex: 'trigger_name', key: 'trigger_name', render: (n: string) => n || '-' },
-        { title: '结果', dataIndex: 'status', key: 'status', render: (s: string) => ciStatusTag(s) },
-        { title: '单测覆盖率', dataIndex: 'coverage', key: 'coverage', render: (c: string) => c || '-' },
-        { title: '耗时', dataIndex: 'duration', key: 'duration', render: (d: number) => fmtDuration(d) },
-        {
-            title: '生成时间', dataIndex: 'created_at', key: 'created_at',
-            sorter: (a: CIReport, b: CIReport) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-            defaultSortOrder: 'descend' as const,
-            render: (date: string) => new Date(date).toLocaleString('zh-CN', { hour12: false }),
-        },
-        {
-            title: '操作', key: 'actions',
-            render: (_: any, r: CIReport) => (
-                <Space>
-                    <Button type="link" size="small" onClick={() => openCIDetail(r)}>详情</Button>
-                    {r.pipeline_url && (
-                        <Button type="link" size="small" onClick={() => window.open(r.pipeline_url, '_blank')}>GitLab</Button>
-                    )}
-                </Space>
-            ),
-        },
-    ];
-
-    const ciJobColumns = [
-        { title: '阶段', dataIndex: 'stage', key: 'stage' },
-        { title: 'Job', dataIndex: 'name', key: 'name' },
-        { title: '结果', dataIndex: 'status', key: 'status', render: (s: string) => ciStatusTag(s) },
-        { title: '耗时', dataIndex: 'duration', key: 'duration', render: (d: number) => fmtDuration(d) },
-        { title: '单测覆盖率', dataIndex: 'coverage', key: 'coverage', render: (c: string) => c || '-' },
-        {
-            title: '日志', key: 'log',
-            render: (_: any, j: CIReportJob) => j.web_url
-                ? <Button type="link" size="small" onClick={() => window.open(j.web_url, '_blank')}>GitLab 查看</Button>
-                : '-',
-        },
-    ];
-
-    useEffect(() => {
-        loadData();
-    }, [activeTab]);
 
     const handleGenerateDaily = () => {
         setGenType('daily');
@@ -172,7 +136,6 @@ export const Reports: React.FC = () => {
 
     const handleGenerate = async () => {
         try {
-            // Placeholder project ID since it's required by the API but missing in this view
             const projectId = 'default';
             if (genType === 'daily') {
                 await generateDailyReport(projectId, genDate);
@@ -184,45 +147,15 @@ export const Reports: React.FC = () => {
             loadData();
         } catch (error) {
             console.error('Failed to generate report:', error);
-            message.error('Failed to generate report');
+            message.error('报告生成失败');
         }
     };
 
-    const handleView = (record: ReportRecord) => {
-        setViewingReport(record);
-    };
-
-    const getReportTypeColor = (type?: string) => {
-        switch (type) {
-            case 'daily': return 'blue';
-            case 'weekly': return 'green';
-            case 'version': return 'purple';
-            case 'custom': return 'default';
-            default: return 'default';
-        }
-    };
-
-    const getStatusTag = (status: string) => {
-        const colors: Record<string, string> = {
-            pending: 'orange',
-            running: 'cyan',
-            completed: 'green',
-            failed: 'red'
-        };
-        const labels: Record<string, string> = {
-            pending: '待执行',
-            running: '执行中',
-            completed: '已完成',
-            failed: '失败'
-        };
-        return <Tag color={colors[status] || 'default'}>{labels[status] || status}</Tag>;
-    };
-
-    const executionColumns = [
+    const executionColumns: ColumnsType<ExecutionRun> = [
         {
-            title: '项目名称',
+            title: '项目',
             key: 'projectName',
-            render: (_: any, record: ExecutionRun) => (
+            render: (_, record) => (
                 <Button type="link" onClick={() => navigate(`/projects/${record.project_id}`)} style={{ padding: 0 }}>
                     {projectsMap[record.project_id] || record.project_id}
                 </Button>
@@ -232,93 +165,128 @@ export const Reports: React.FC = () => {
             title: '执行名称',
             dataIndex: 'name',
             key: 'name',
-            render: (text: string, record: ExecutionRun) => (
+            render: (text: string, record) => (
                 <Button type="link" onClick={() => window.open(`/runs/${record.id}`, '_blank')} style={{ padding: 0 }}>
                     {text}
                 </Button>
             )
         },
-        {
-            title: '状态',
-            dataIndex: 'status',
-            key: 'status',
-            render: (status: string) => getStatusTag(status)
-        },
+        { title: '状态', dataIndex: 'status', key: 'status', render: statusTag },
         {
             title: '创建时间',
             dataIndex: 'created_at',
             key: 'created_at',
-            sorter: (a: ExecutionRun, b: ExecutionRun) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-            render: (date: string) => new Date(date).toLocaleString(),
+            sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+            defaultSortOrder: 'descend',
+            render: formatDateTime
         },
         {
             title: '操作',
             key: 'actions',
-            render: (_: any, record: ExecutionRun) => (
+            render: (_, record) => (
+                <Button type="link" size="small" onClick={() => window.open(`/runs/${record.id}`, '_blank')}>
+                    查看报告
+                </Button>
+            )
+        }
+    ];
+
+    const ciColumns: ColumnsType<CIReport> = [
+        {
+            title: '报告名称',
+            dataIndex: 'name',
+            key: 'name',
+            render: (text: string, record) => (
+                <Button type="link" style={{ padding: 0 }} onClick={() => openCIDetail(record)}>
+                    {text}
+                </Button>
+            )
+        },
+        {
+            title: '分支',
+            dataIndex: 'branch',
+            key: 'branch',
+            render: (branch: string, record) => <span>{branch} <Text type="secondary">@{record.commit_sha}</Text></span>
+        },
+        { title: '触发人', dataIndex: 'trigger_name', key: 'trigger_name', render: (name: string) => name || '-' },
+        { title: '结果', dataIndex: 'status', key: 'status', render: statusTag },
+        { title: '覆盖率', dataIndex: 'coverage', key: 'coverage', render: (coverage: string) => coverage || '-' },
+        { title: '耗时', dataIndex: 'duration', key: 'duration', render: formatDuration },
+        {
+            title: '生成时间',
+            dataIndex: 'created_at',
+            key: 'created_at',
+            sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+            defaultSortOrder: 'descend',
+            render: formatDateTime
+        },
+        {
+            title: '操作',
+            key: 'actions',
+            render: (_, record) => (
                 <Space>
-                    <Button type="link" size="small" onClick={() => window.open(`/runs/${record.id}`, '_blank')}>
-                        查看报告
-                    </Button>
+                    <Button type="link" size="small" onClick={() => openCIDetail(record)}>详情</Button>
+                    {record.pipeline_url && (
+                        <Button type="link" size="small" icon={<LinkOutlined />} onClick={() => window.open(record.pipeline_url, '_blank')}>
+                            GitLab
+                        </Button>
+                    )}
                 </Space>
             )
         }
     ];
 
-    const columns = [
+    const ciJobColumns: ColumnsType<CIReportJob> = [
+        { title: '阶段', dataIndex: 'stage', key: 'stage' },
+        { title: 'Job', dataIndex: 'name', key: 'name' },
+        { title: '结果', dataIndex: 'status', key: 'status', render: statusTag },
+        { title: '耗时', dataIndex: 'duration', key: 'duration', render: formatDuration },
+        { title: '覆盖率', dataIndex: 'coverage', key: 'coverage', render: (coverage: string) => coverage || '-' },
         {
-            title: '报告名称',
-            dataIndex: 'name',
-            key: 'name',
-            sorter: (a: ReportRecord, b: ReportRecord) => a.name.localeCompare(b.name),
-        },
+            title: '日志',
+            key: 'log',
+            render: (_, job) => job.web_url
+                ? <Button type="link" size="small" onClick={() => window.open(job.web_url, '_blank')}>GitLab 查看</Button>
+                : '-'
+        }
+    ];
+
+    const reportColumns: ColumnsType<ReportRecord> = [
+        { title: '报告名称', dataIndex: 'name', key: 'name', sorter: (a, b) => a.name.localeCompare(b.name) },
         {
             title: '类型',
             dataIndex: 'report_type',
             key: 'report_type',
-            filters: [
-                { text: '日报', value: 'daily' },
-                { text: '周报', value: 'weekly' },
-                { text: '版本报告', value: 'version' },
-                { text: '自定义', value: 'custom' },
-            ],
-            onFilter: (value: any, record: ReportRecord) => record.report_type === value,
-            render: (type: string) => <Tag color={getReportTypeColor(type)}>{type}</Tag>,
+            render: (type: string) => <Tag color={type === 'daily' ? 'blue' : type === 'weekly' ? 'green' : 'purple'}>{type}</Tag>
         },
         {
             title: '时间范围',
             key: 'period',
-            render: (_: any, record: ReportRecord) => (
-                <span>
-                    {record.start_date ? new Date(record.start_date).toLocaleDateString() : ''}
-                    {record.end_date ? ` - ${new Date(record.end_date).toLocaleDateString()}` : ''}
-                </span>
-            ),
+            render: (_, record) => `${record.start_date ? formatDate(record.start_date) : ''}${record.end_date ? ` - ${formatDate(record.end_date)}` : ''}`
         },
         {
             title: '生成时间',
             dataIndex: 'created_at',
             key: 'created_at',
-            sorter: (a: ReportRecord, b: ReportRecord) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-            render: (date: string) => new Date(date).toLocaleDateString(),
+            sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+            render: formatDate
         },
         {
             title: '操作',
             key: 'actions',
-            render: (_: any, record: ReportRecord) => (
+            render: (_, record) => (
                 <Space>
-                    <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => handleView(record)}>
+                    <Button type="link" size="small" icon={<FileSearchOutlined />} onClick={() => setViewingReport(record)}>
                         查看分析
                     </Button>
-                    <Button 
-                        type="link" 
-                        size="small" 
-                        icon={<RobotOutlined />} 
+                    <Button
+                        type="link"
+                        size="small"
+                        icon={<RobotOutlined />}
                         onClick={() => {
                             const content = record.content || JSON.stringify(record.content_json);
                             navigate('/ai-assistant', {
-                                state: {
-                                    initialQuestion: `请帮我深入分析一下这份测试报告：\n\n${content}`
-                                }
+                                state: { initialQuestion: `请深入分析这份测试报告：\n\n${content}` }
                             });
                         }}
                     >
@@ -330,15 +298,15 @@ export const Reports: React.FC = () => {
                         </Button>
                     )}
                 </Space>
-            ),
-        },
+            )
+        }
     ];
 
     return (
         <div>
             <Title level={3} style={{ marginBottom: 24 }}>分析与报告</Title>
-            <Tabs 
-                activeKey={activeTab} 
+            <Tabs
+                activeKey={activeTab}
                 onChange={setActiveTab}
                 items={[
                     {
@@ -346,12 +314,7 @@ export const Reports: React.FC = () => {
                         label: '测试执行报告',
                         children: (
                             <Card>
-                                <Table
-                                    columns={executionColumns}
-                                    dataSource={executions}
-                                    rowKey="id"
-                                    loading={loading}
-                                />
+                                <Table columns={executionColumns} dataSource={executions} rowKey="id" loading={loading} />
                             </Card>
                         )
                     },
@@ -362,8 +325,8 @@ export const Reports: React.FC = () => {
                             <>
                                 <Row gutter={16} style={{ marginBottom: 16 }}>
                                     <Col span={8}><Card><Statistic title="流水线总数" value={ciReports.length} prefix={<BarChartOutlined />} /></Card></Col>
-                                    <Col span={8}><Card><Statistic title="成功" value={ciReports.filter(r => r.status === 'success').length} valueStyle={{ color: '#3f8600' }} /></Card></Col>
-                                    <Col span={8}><Card><Statistic title="失败" value={ciReports.filter(r => r.status === 'failed').length} valueStyle={{ color: '#cf1322' }} /></Card></Col>
+                                    <Col span={8}><Card><Statistic title="成功" value={ciReports.filter((item) => item.status === 'success').length} valueStyle={{ color: '#3f8600' }} /></Card></Col>
+                                    <Col span={8}><Card><Statistic title="失败" value={ciReports.filter((item) => item.status === 'failed').length} valueStyle={{ color: '#cf1322' }} /></Card></Col>
                                 </Row>
                                 <Card>
                                     <Title level={4} style={{ marginTop: 0 }}>持续集成报告</Title>
@@ -378,53 +341,19 @@ export const Reports: React.FC = () => {
                         children: (
                             <>
                                 <Row gutter={16} style={{ marginBottom: 16 }}>
-                                    <Col span={8}>
-                                    <Card>
-                                        <Statistic
-                                        title="总报告数"
-                                        value={records.length}
-                                        prefix={<BarChartOutlined />}
-                                        />
-                                    </Card>
-                                    </Col>
-                                    <Col span={8}>
-                                    <Card>
-                                        <Statistic
-                                        title="日报数量"
-                                        value={records.filter(r => r.report_type === 'daily').length}
-                                        valueStyle={{ color: '#3f8600' }}
-                                        />
-                                    </Card>
-                                    </Col>
-                                    <Col span={8}>
-                                    <Card>
-                                        <Statistic
-                                        title="周报数量"
-                                        value={records.filter(r => r.report_type === 'weekly').length}
-                                        valueStyle={{ color: '#1890ff' }}
-                                        />
-                                    </Card>
-                                    </Col>
+                                    <Col span={8}><Card><Statistic title="总报告数" value={records.length} prefix={<BarChartOutlined />} /></Card></Col>
+                                    <Col span={8}><Card><Statistic title="日报数量" value={records.filter((item) => item.report_type === 'daily').length} valueStyle={{ color: '#3f8600' }} /></Card></Col>
+                                    <Col span={8}><Card><Statistic title="周报数量" value={records.filter((item) => item.report_type === 'weekly').length} valueStyle={{ color: '#1890ff' }} /></Card></Col>
                                 </Row>
-
                                 <Card>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                                    <Title level={4} style={{ margin: 0 }}>分析与报告记录</Title>
-                                    <Space>
-                                        <Button type="primary" onClick={handleGenerateDaily}>
-                                        生成日报
-                                        </Button>
-                                        <Button type="primary" onClick={handleGenerateWeekly}>
-                                        生成周报
-                                        </Button>
-                                    </Space>
+                                        <Title level={4} style={{ margin: 0 }}>分析与报告记录</Title>
+                                        <Space>
+                                            <Button type="primary" onClick={handleGenerateDaily}>生成日报</Button>
+                                            <Button type="primary" onClick={handleGenerateWeekly}>生成周报</Button>
+                                        </Space>
                                     </div>
-                                    <Table
-                                    columns={columns}
-                                    dataSource={records}
-                                    rowKey="id"
-                                    loading={loading}
-                                    />
+                                    <Table columns={reportColumns} dataSource={records} rowKey="id" loading={loading} />
                                 </Card>
                             </>
                         )
@@ -439,13 +368,13 @@ export const Reports: React.FC = () => {
                 onOk={handleGenerate}
             >
                 <Form layout="vertical">
-                <Form.Item label="日期">
-                    <DatePicker
-                    value={dayjs(genDate)}
-                    onChange={(date) => setGenDate(date?.format('YYYY-MM-DD') || '')}
-                    style={{ width: '100%' }}
-                    />
-                </Form.Item>
+                    <Form.Item label="日期">
+                        <DatePicker
+                            value={dayjs(genDate)}
+                            onChange={(date) => setGenDate(date?.format('YYYY-MM-DD') || '')}
+                            style={{ width: '100%' }}
+                        />
+                    </Form.Item>
                 </Form>
             </Modal>
 
@@ -453,40 +382,38 @@ export const Reports: React.FC = () => {
                 title={viewingReport?.name}
                 open={!!viewingReport}
                 onCancel={() => setViewingReport(null)}
-                footer={
+                footer={(
                     <Space>
                         <Button onClick={() => setViewingReport(null)}>关闭</Button>
-                        <Button 
-                            type="primary" 
+                        <Button
+                            type="primary"
                             icon={<RobotOutlined />}
                             onClick={() => {
                                 const content = viewingReport?.content || JSON.stringify(viewingReport?.content_json);
                                 navigate('/ai-assistant', {
-                                    state: {
-                                        initialQuestion: `请帮我深入分析一下这份测试报告：\n\n${content}`
-                                    }
+                                    state: { initialQuestion: `请深入分析这份测试报告：\n\n${content}` }
                                 });
                             }}
                         >
                             AI 进一步分析
                         </Button>
                     </Space>
-                }
+                )}
                 width={800}
             >
                 {viewingReport && (
-                <div>
-                    <div style={{ marginBottom: 16 }}>
-                    <Text type="secondary">生成时间: {new Date(viewingReport.created_at).toLocaleString()}</Text>
+                    <div>
+                        <div style={{ marginBottom: 16 }}>
+                            <Text type="secondary">生成时间: {formatDateTime(viewingReport.created_at)}</Text>
+                        </div>
+                        {viewingReport.content ? (
+                            <div dangerouslySetInnerHTML={{ __html: viewingReport.content }} />
+                        ) : (
+                            <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 4, overflow: 'auto', maxHeight: 400 }}>
+                                {JSON.stringify(viewingReport.content_json, null, 2)}
+                            </pre>
+                        )}
                     </div>
-                    {viewingReport.content ? (
-                        <div dangerouslySetInnerHTML={{ __html: viewingReport.content }} />
-                    ) : (
-                        <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 4, overflow: 'auto', maxHeight: 400 }}>
-                        {JSON.stringify(viewingReport.content_json, null, 2)}
-                        </pre>
-                    )}
-                </div>
                 )}
             </Modal>
 
@@ -494,7 +421,7 @@ export const Reports: React.FC = () => {
                 title={viewingCI?.name}
                 open={!!viewingCI}
                 onCancel={() => setViewingCI(null)}
-                footer={
+                footer={(
                     <Space>
                         <Button onClick={() => setViewingCI(null)}>关闭</Button>
                         {viewingCI?.pipeline_url && (
@@ -503,21 +430,21 @@ export const Reports: React.FC = () => {
                             </Button>
                         )}
                     </Space>
-                }
+                )}
                 width={1000}
             >
                 {viewingCI && (
                     <div>
                         <Row gutter={[16, 8]} style={{ marginBottom: 16 }}>
-                            <Col span={8}><Text type="secondary">触发人员：</Text>{viewingCI.trigger_name || '-'}</Col>
-                            <Col span={8}><Text type="secondary">结果：</Text>{ciStatusTag(viewingCI.status)}</Col>
-                            <Col span={8}><Text type="secondary">来源：</Text>{viewingCI.source || '-'}</Col>
-                            <Col span={8}><Text type="secondary">分支：</Text>{viewingCI.branch} @{viewingCI.commit_sha}</Col>
-                            <Col span={8}><Text type="secondary">单测覆盖率：</Text>{viewingCI.coverage || '-'}</Col>
-                            <Col span={8}><Text type="secondary">总耗时：</Text>{fmtDuration(viewingCI.duration)}</Col>
-                            <Col span={24}><Text type="secondary">生成时间：</Text>{new Date(viewingCI.created_at).toLocaleString('zh-CN', { hour12: false })}</Col>
+                            <Col span={8}><Text type="secondary">触发人: </Text>{viewingCI.trigger_name || '-'}</Col>
+                            <Col span={8}><Text type="secondary">结果: </Text>{statusTag(viewingCI.status)}</Col>
+                            <Col span={8}><Text type="secondary">来源: </Text>{viewingCI.source || '-'}</Col>
+                            <Col span={8}><Text type="secondary">分支: </Text>{viewingCI.branch} @{viewingCI.commit_sha}</Col>
+                            <Col span={8}><Text type="secondary">覆盖率: </Text>{viewingCI.coverage || '-'}</Col>
+                            <Col span={8}><Text type="secondary">总耗时: </Text>{formatDuration(viewingCI.duration)}</Col>
+                            <Col span={24}><Text type="secondary">生成时间: </Text>{formatDateTime(viewingCI.created_at)}</Col>
                         </Row>
-                        <Title level={5}>各环节执行情况（展开看日志）</Title>
+                        <Title level={5}>各环节执行情况</Title>
                         <Table
                             columns={ciJobColumns}
                             dataSource={viewingCI.jobs || []}
@@ -525,12 +452,12 @@ export const Reports: React.FC = () => {
                             size="small"
                             pagination={false}
                             expandable={{
-                                expandedRowRender: (j: CIReportJob) => (
+                                expandedRowRender: (job: CIReportJob) => (
                                     <pre style={{ background: '#1e1e1e', color: '#d4d4d4', padding: 12, borderRadius: 4, overflow: 'auto', maxHeight: 400, fontSize: 12, whiteSpace: 'pre-wrap' }}>
-                                        {j.log || '(无日志)'}
+                                        {job.log || '(无日志)'}
                                     </pre>
                                 ),
-                                rowExpandable: (j: CIReportJob) => !!j.log,
+                                rowExpandable: (job) => !!job.log
                             }}
                         />
                     </div>

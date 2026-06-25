@@ -764,6 +764,27 @@ export interface CIReport {
     jobs?: CIReportJob[];
 }
 
+export interface ReleaseArtifact {
+    id: string;
+    version: string;
+    name: string;
+    branch?: string;
+    commit_sha?: string;
+    pipeline_id?: string;
+    pipeline_iid?: number;
+    pipeline_url?: string;
+    job_id?: string;
+    job_url?: string;
+    download_url?: string;
+    file_name?: string;
+    file_size?: number;
+    file_sha256?: string;
+    storage_type: string;
+    built_at?: string;
+    created_at: string;
+    extra_data?: any;
+}
+
 export const getCIReports = async () => {
     const response = await api.get<CIReport[]>('/ci-reports');
     return response.data;
@@ -771,6 +792,14 @@ export const getCIReports = async () => {
 
 export const getCIReport = async (id: string) => {
     const response = await api.get<CIReport>(`/ci-reports/${id}`);
+    return response.data;
+};
+
+export const getReleaseArtifacts = async (params?: {
+    version?: string;
+    branch?: string;
+}) => {
+    const response = await api.get<ReleaseArtifact[]>('/artifacts', { params });
     return response.data;
 };
 

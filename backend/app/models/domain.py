@@ -368,6 +368,29 @@ class CIReportJob(Base):
     report = relationship("CIReport", back_populates="jobs")
 
 
+class ReleaseArtifact(Base):
+    """Release package metadata registered by CI."""
+    __tablename__ = "release_artifacts"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    version = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    branch = Column(String, nullable=True, index=True)
+    commit_sha = Column(String, nullable=True)
+    pipeline_id = Column(String, nullable=True, index=True)
+    pipeline_iid = Column(Integer, nullable=True)
+    pipeline_url = Column(String, nullable=True)
+    job_id = Column(String, nullable=True)
+    job_url = Column(String, nullable=True)
+    download_url = Column(String, nullable=True)
+    file_name = Column(String, nullable=True)
+    file_size = Column(Integer, nullable=True)
+    file_sha256 = Column(String, nullable=True)
+    storage_type = Column(String, default="gitlab_artifact")
+    built_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    extra_data = Column(JSON, nullable=True)
+
+
 def get_db_session():
     """获取数据库会话的生成器"""
     from app.database import SessionLocal

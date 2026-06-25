@@ -189,14 +189,52 @@ package-release:
     - if: '$CI_COMMIT_BRANCH =~ /^release/'
   dependencies: [frontend-build]      # 取已编译的 frontend/dist
   script:
-    - 'VERSION="${CI_COMMIT_REF_NAME#release/}"'
-    - echo "📦 出包 $VERSION（commit $CI_COMMIT_SHORT_SHA, 构建时间 $(date -u +%FT%TZ)）"
+    - 'export VERSION="${CI_COMMIT_REF_NAME#release/}"'
+    - 'echo "Packaging release $VERSION (commit $CI_COMMIT_SHORT_SHA, built $(date -u +%FT%TZ))"'
     - mkdir -p dist-pkg
     - tar czf "dist-pkg/autotesthub-${VERSION}.tar.gz" --exclude='.git' --exclude='frontend/node_modules' --exclude='backend/venv' --exclude='dist-pkg' frontend/dist backend docker-compose.yml
     - 'printf "version: %s\ncommit:  %s\nbuilt:   %s\n" "$VERSION" "$CI_COMMIT_SHA" "$(date -u +%FT%TZ)" > dist-pkg/VERSION.txt'
+    - |
+      export PKG="dist-pkg/autotesthub-${VERSION}.tar.gz"
+      export BUILT_AT="$(date -u +%FT%TZ)"
+      export SIZE="$(wc -c < "$PKG" | tr -d " ")"
+      export SHA256="$(sha256sum "$PKG" | awk '{print $1}')"
+      export DOWNLOAD_URL="$CI_PROJECT_URL/-/jobs/$CI_JOB_ID/artifacts/file/$PKG"
+      python3 - <<'PY' || echo "WARN: artifact metadata upload failed (non-blocking)"
+      import json
+      import os
+      import urllib.request
+
+      payload = {
+          "version": os.environ["VERSION"],
+          "name": f"autotesthub-{os.environ['VERSION']}.tar.gz",
+          "branch": os.environ.get("CI_COMMIT_REF_NAME"),
+          "commit_sha": os.environ.get("CI_COMMIT_SHORT_SHA"),
+          "pipeline_id": os.environ.get("CI_PIPELINE_ID"),
+          "pipeline_iid": int(os.environ["CI_PIPELINE_IID"]) if os.environ.get("CI_PIPELINE_IID", "").isdigit() else None,
+          "pipeline_url": os.environ.get("CI_PIPELINE_URL"),
+          "job_id": os.environ.get("CI_JOB_ID"),
+          "job_url": os.environ.get("CI_JOB_URL"),
+          "download_url": os.environ.get("DOWNLOAD_URL"),
+          "file_name": os.environ.get("PKG"),
+          "file_size": int(os.environ["SIZE"]) if os.environ.get("SIZE", "").isdigit() else None,
+          "file_sha256": os.environ.get("SHA256"),
+          "storage_type": "gitlab_artifact",
+          "built_at": os.environ.get("BUILT_AT"),
+          "extra_data": {"source": "package-release"},
+      }
+      req = urllib.request.Request(
+          os.environ.get("HUB_URL", "http://120.79.207.52:15173").rstrip("/") + "/api/artifacts",
+          data=json.dumps(payload).encode("utf-8"),
+          method="POST",
+          headers={"Content-Type": "application/json"},
+      )
+      with urllib.request.urlopen(req, timeout=15) as resp:
+          print("Artifact metadata uploaded:", resp.status)
+      PY
     - ls -lh dist-pkg/
   artifacts:
-    name: "autotesthub-${CI_COMMIT_REF_NAME}"
+    name: "autotesthub-${CI_COMMIT_REF_SLUG}"
     paths: [dist-pkg/]
     expire_in: 3 months
 
@@ -329,3 +367,16 @@ report-notify:
     - when: always
   script:
     - python3 ci/report_notify.py
+
+import-gitlab-artifacts:
+  stage: .post
+  extends: [.linux-node]
+  variables:
+    HUB_URL: "http://120.79.207.52:15173"
+    IMPORT_MAX_PAGES: "20"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      when: manual
+      allow_failure: true
+  script:
+    - python3 ci/import_gitlab_artifacts.py

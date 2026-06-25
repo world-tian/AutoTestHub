@@ -16,7 +16,8 @@ import {
     BarChartOutlined,
     LinkOutlined,
     FileSearchOutlined,
-    TagsOutlined
+    TagsOutlined,
+    ExperimentOutlined
 } from '@ant-design/icons';
 import { Login } from './pages/Login';
 import { FeishuCallback } from './pages/FeishuCallback';
@@ -32,6 +33,7 @@ import { DefectManagement } from './pages/DefectManagement';
 import { Toolbox } from './pages/Toolbox';
 import { IntegrationConfigPage } from './pages/IntegrationConfig';
 import { Reports } from './pages/Reports';
+import { Artifacts } from './pages/Artifacts';
 import { VersionIterations } from './pages/VersionIterations';
 
 const { Content, Sider } = Layout;
@@ -72,6 +74,7 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
         if (path.startsWith('/test-cases')) return 'test-cases';
         if (path.startsWith('/defects')) return 'defects';
         if (path.startsWith('/integrations')) return 'integrations';
+        if (path.startsWith('/artifacts')) return 'artifacts';
         if (path.startsWith('/reports')) return 'reports';
         if (path.startsWith('/iterations')) return 'iterations';
         if (path.startsWith('/projects') || path.startsWith('/runs')) return 'projects';
@@ -167,12 +170,17 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
               {
               key: 'analytics',
               icon: <BarChartOutlined />,
-              label: '分析与报告',
+              label: '报告与制品',
               children: [
                   {
                   key: 'reports',
                   icon: <FileSearchOutlined />,
                   label: <Link to="/reports">报告</Link>,
+                  },
+                  {
+                  key: 'artifacts',
+                  icon: <ExperimentOutlined />,
+                  label: <Link to="/artifacts">制品管理</Link>,
                   },
                   {
                   key: 'integrations',
@@ -312,6 +320,7 @@ const App: React.FC = () => {
         <Route path="/toolbox" element={<PrivateRoute><MainLayout><Toolbox /></MainLayout></PrivateRoute>} />
         <Route path="/integrations" element={<PrivateRoute><MainLayout><IntegrationConfigPage /></MainLayout></PrivateRoute>} />
         <Route path="/reports" element={<PrivateRoute><MainLayout><Reports /></MainLayout></PrivateRoute>} />
+        <Route path="/artifacts" element={<PrivateRoute><MainLayout><Artifacts /></MainLayout></PrivateRoute>} />
         <Route path="/iterations" element={<PrivateRoute><MainLayout><VersionIterations /></MainLayout></PrivateRoute>} />
         <Route path="/runs/:id" element={<PrivateRoute><MainLayout><ReportDetail /></MainLayout></PrivateRoute>} />
         <Route path="/agents" element={<PrivateRoute><MainLayout><AgentManagement /></MainLayout></PrivateRoute>} />

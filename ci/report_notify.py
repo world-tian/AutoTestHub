@@ -166,7 +166,7 @@ def push_ci_report(jobs_data, overall, coverage):
 def build_text(stages, overall, coverage):
     lines = [f"{label}：{icon(stages[key])}" for key, label in STAGE_LABELS]
     if coverage:
-        lines.append(f"覆盖率：{coverage}")
+        lines.append(f"单测覆盖率：{coverage}")
     who = f"（提交人 {GL_USER_NAME}）" if GL_USER_NAME else ""
     return (
         f"【AutoTestHub CI {icon(overall)}】{who}\n"

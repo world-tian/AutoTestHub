@@ -119,7 +119,7 @@ export const Reports: React.FC = () => {
         },
         { title: '触发人员', dataIndex: 'trigger_name', key: 'trigger_name', render: (n: string) => n || '-' },
         { title: '结果', dataIndex: 'status', key: 'status', render: (s: string) => ciStatusTag(s) },
-        { title: '覆盖率', dataIndex: 'coverage', key: 'coverage', render: (c: string) => c || '-' },
+        { title: '单测覆盖率', dataIndex: 'coverage', key: 'coverage', render: (c: string) => c || '-' },
         { title: '耗时', dataIndex: 'duration', key: 'duration', render: (d: number) => fmtDuration(d) },
         {
             title: '生成时间', dataIndex: 'created_at', key: 'created_at',
@@ -145,7 +145,7 @@ export const Reports: React.FC = () => {
         { title: 'Job', dataIndex: 'name', key: 'name' },
         { title: '结果', dataIndex: 'status', key: 'status', render: (s: string) => ciStatusTag(s) },
         { title: '耗时', dataIndex: 'duration', key: 'duration', render: (d: number) => fmtDuration(d) },
-        { title: '覆盖率', dataIndex: 'coverage', key: 'coverage', render: (c: string) => c || '-' },
+        { title: '单测覆盖率', dataIndex: 'coverage', key: 'coverage', render: (c: string) => c || '-' },
         {
             title: '日志', key: 'log',
             render: (_: any, j: CIReportJob) => j.web_url
@@ -513,7 +513,7 @@ export const Reports: React.FC = () => {
                             <Col span={8}><Text type="secondary">结果：</Text>{ciStatusTag(viewingCI.status)}</Col>
                             <Col span={8}><Text type="secondary">来源：</Text>{viewingCI.source || '-'}</Col>
                             <Col span={8}><Text type="secondary">分支：</Text>{viewingCI.branch} @{viewingCI.commit_sha}</Col>
-                            <Col span={8}><Text type="secondary">覆盖率：</Text>{viewingCI.coverage || '-'}</Col>
+                            <Col span={8}><Text type="secondary">单测覆盖率：</Text>{viewingCI.coverage || '-'}</Col>
                             <Col span={8}><Text type="secondary">总耗时：</Text>{fmtDuration(viewingCI.duration)}</Col>
                             <Col span={24}><Text type="secondary">生成时间：</Text>{new Date(viewingCI.created_at).toLocaleString('zh-CN', { hour12: false })}</Col>
                         </Row>

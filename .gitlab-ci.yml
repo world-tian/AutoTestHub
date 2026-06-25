@@ -19,6 +19,7 @@ stages:
   - scan
   - unit-test
   - build
+  - package
   - deploy
   - test
 
@@ -148,6 +149,28 @@ frontend-build:
   artifacts:
     paths: [frontend/dist]
     expire_in: 1 week
+
+# ============================================================
+# 3b. 出包（仅 release/X.Y.Z）：打出带版本号的发布包
+#     版本号 = 分支名去掉 release/ 前缀（如 release/1.2.0 → 1.2.0）
+# ============================================================
+package-release:
+  stage: package
+  extends: [.linux-node]
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release/'
+  dependencies: [frontend-build]      # 取已编译的 frontend/dist
+  script:
+    - 'VERSION="${CI_COMMIT_REF_NAME#release/}"'
+    - echo "📦 出包版本 v$VERSION（commit $CI_COMMIT_SHORT_SHA）"
+    - mkdir -p dist-pkg
+    - tar czf "dist-pkg/autotesthub-v${VERSION}.tar.gz" --exclude='.git' --exclude='frontend/node_modules' --exclude='backend/venv' --exclude='dist-pkg' frontend/dist backend docker-compose.yml
+    - 'echo "v${VERSION}  ${CI_COMMIT_SHA}  $(date -u +%FT%TZ)" > dist-pkg/VERSION.txt'
+    - ls -lh dist-pkg/
+  artifacts:
+    name: "autotesthub-${CI_COMMIT_REF_NAME}"
+    paths: [dist-pkg/]
+    expire_in: 3 months
 
 # ============================================================
 # 4. 部署

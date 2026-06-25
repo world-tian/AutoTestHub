@@ -371,12 +371,15 @@ report-notify:
 import-gitlab-artifacts:
   stage: .post
   extends: [.linux-node]
+  allow_failure: true
   variables:
     HUB_URL: "http://120.79.207.52:15173"
     IMPORT_MAX_PAGES: "20"
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
-      when: manual
-      allow_failure: true
+      when: always
+    - if: '$CI_COMMIT_BRANCH =~ /^release/'
+      when: always
+    - when: never
   script:
     - python3 ci/import_gitlab_artifacts.py

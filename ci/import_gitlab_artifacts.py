@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Backfill release package metadata from GitLab jobs into AutoTestHub.
+"""Backfill GitLab artifact metadata into AutoTestHub.
 
-This is intended for one-off or occasional imports after the artifact registry
-feature is deployed. It reads GitLab package-release jobs and posts metadata to
-AutoTestHub /api/artifacts. It does not download artifacts or mutate Docker
-volumes.
+This is intended for one-off imports and the CI .post job. It reads successful
+GitLab jobs that produced artifacts and posts metadata to AutoTestHub
+/api/artifacts. It does not download artifacts or mutate Docker volumes.
 
 Required configuration:
   GITLAB_API_TOKEN or GIT_WRITE_TOKEN  GitLab token with read_api
@@ -84,42 +83,57 @@ def existing_artifact_keys():
 
 def artifact_payload(job):
     ref = job.get("ref") or ""
-    if not ref.startswith("release/"):
-        return None
-    if job.get("name") != "package-release":
+    name = job.get("name") or ""
+    status = job.get("status") or ""
+    if status != "success":
         return None
     artifacts_file = job.get("artifacts_file") or {}
     if not artifacts_file:
         return None
 
-    version = ref.removeprefix("release/")
-    package_name = f"autotesthub-{version}.tar.gz"
-    package_path = f"dist-pkg/{package_name}"
     job_url = job.get("web_url") or ""
     pipeline = job.get("pipeline") or {}
     commit = job.get("commit") or {}
     pipeline_id = pipeline.get("id")
+    pipeline_iid = pipeline.get("iid")
+
+    if name == "package-release" and ref.startswith("release/"):
+        version = ref.removeprefix("release/")
+        package_name = f"autotesthub-{version}.tar.gz"
+        package_path = f"dist-pkg/{package_name}"
+        display_name = package_name
+        file_name = package_path
+        download_url = f"{job_url}/artifacts/file/{package_path}" if job_url else None
+        source = "package-release"
+    else:
+        version = f"{ref or 'detached'}-{pipeline_iid or pipeline_id or job.get('id')}"
+        display_name = artifacts_file.get("filename") or f"{name}-artifacts.zip"
+        file_name = artifacts_file.get("filename") or display_name
+        download_url = f"{job_url}/artifacts/download" if job_url else None
+        source = "gitlab_job_artifact"
 
     return {
         "version": version,
-        "name": package_name,
+        "name": display_name,
         "branch": ref,
         "commit_sha": commit.get("short_id") or (commit.get("id") or "")[:8] or None,
         "pipeline_id": str(pipeline_id) if pipeline_id is not None else None,
-        "pipeline_iid": pipeline.get("iid"),
+        "pipeline_iid": pipeline_iid,
         "pipeline_url": pipeline.get("web_url"),
         "job_id": str(job.get("id")) if job.get("id") is not None else None,
         "job_url": job_url,
-        "download_url": f"{job_url}/artifacts/file/{package_path}" if job_url else None,
-        "file_name": package_path,
+        "download_url": download_url,
+        "file_name": file_name,
         "file_size": artifacts_file.get("size"),
         "file_sha256": None,
         "storage_type": "gitlab_artifact",
         "built_at": job.get("finished_at") or job.get("created_at"),
         "extra_data": {
-            "source": "gitlab_backfill",
+            "source": source,
+            "job_name": name,
+            "job_stage": job.get("stage"),
+            "job_status": status,
             "gitlab_artifacts_file": artifacts_file,
-            "job_status": job.get("status"),
         },
     }
 

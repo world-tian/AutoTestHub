@@ -142,13 +142,29 @@ def collect_jobs(jobs):
     return out
 
 
+def action_label():
+    """把(来源+分支)翻译成人话动作，让通知/报告一眼看懂这是在干啥。"""
+    if SOURCE == "merge_request_event":
+        tgt = os.environ.get("CI_MERGE_REQUEST_TARGET_BRANCH_NAME", "")
+        return f"MR 验证（待合入 {tgt}）" if tgt else "MR 验证（合入前门禁）"
+    if SOURCE == "schedule":
+        return "定时任务"
+    if BRANCH == "master":
+        return "合入 master → 部署生产"
+    if BRANCH.startswith("release/"):
+        return f"版本发布 {BRANCH[len('release/'):]} → 部署预发布 + 出包"
+    if BRANCH == "dev":
+        return "dev 集成验证"
+    return f"分支 {BRANCH}"
+
+
 def push_ci_report(jobs_data, overall, coverage):
     """整条流水线 + 各 job 明细，POST 到 AutoTestHub /api/ci-reports（持续集成报告 tab）。"""
     total = sum(j["duration"] or 0 for j in jobs_data) or None
     payload = {
         "pipeline_iid": int(IID) if str(IID).isdigit() else None,
         "pipeline_id": PIPE or None,
-        "name": f"CI #{IID} {BRANCH} @ {SHA}",
+        "name": f"{action_label()} · {BRANCH}@{SHA} (#{IID})",
         "branch": BRANCH, "commit_sha": SHA, "source": SOURCE,
         "trigger_name": GL_USER_NAME or None, "trigger_email": GL_USER_EMAIL or None,
         "status": overall, "pipeline_url": PIPE_URL,
@@ -169,8 +185,8 @@ def build_text(stages, overall, coverage):
         lines.append(f"单测覆盖率：{coverage}")
     who = f"（提交人 {GL_USER_NAME}）" if GL_USER_NAME else ""
     return (
-        f"【AutoTestHub CI {icon(overall)}】{who}\n"
-        f"分支 {BRANCH} @ {SHA}（{SOURCE}）\n"
+        f"【AutoTestHub CI {icon(overall)}】{action_label()}\n"
+        f"{who}分支 {BRANCH} @ {SHA}\n"
         + "\n".join(lines)
         + f"\n流水线 #{IID}：{PIPE_URL}"
     )

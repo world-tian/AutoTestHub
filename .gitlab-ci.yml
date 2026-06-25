@@ -49,9 +49,9 @@ variables:
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   - if: '$CI_COMMIT_BRANCH == "dev"'
 
-.rules-build: &rules-build                # MR / master / dev / release（都要构建产物）
+.rules-build: &rules-build                # MR / master / dev / release（master 排除定时触发）
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-  - if: '$CI_COMMIT_BRANCH == "master"'
+  - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule"'
   - if: '$CI_COMMIT_BRANCH == "dev"'
   - if: '$CI_COMMIT_BRANCH =~ /^release/'
 
@@ -70,6 +70,34 @@ variables:
 .ci-instance: &ci-instance
   COMPOSE_PROJECT_NAME: autotesthub-ci
   FRONTEND_PORT: "15373"
+
+# ============================================================
+# 0. 定时任务（GitLab Pipeline Schedules 触发，在 master 上跑）
+#    在 Settings→CI/CD→Pipeline schedules 建两个计划，分别设变量 SCHEDULE_TASK=cut / cleanup
+#    需 CI 变量 GIT_WRITE_TOKEN（项目访问令牌：api + write_repository，maintainer）
+# ============================================================
+# 每周拉一条按时间命名的 release 分支 → 自动触发版本发布流水线
+cut-weekly-release:
+  stage: scan
+  extends: [.linux-node]
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK == "cut"'
+  script:
+    - 'BR="release/$(date +%Y-%m-%d-%H%M)"'
+    - echo "拉取本周 release 分支：$BR"
+    - 'curl --fail -sS -X POST -H "PRIVATE-TOKEN: $GIT_WRITE_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/branches?branch=$BR&ref=master" >/dev/null'
+    - 'echo "✅ 已创建 $BR，将自动触发：编译→出包→部署预发布→测试→报告"'
+
+# 清理 N 周前【按时间命名】的 release 分支（语义正式版本不动）
+cleanup-old-releases:
+  stage: scan
+  extends: [.linux-node]
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK == "cleanup"'
+  variables:
+    KEEP_WEEKS: "8"
+  script:
+    - python3 ci/cleanup_releases.py
 
 # ============================================================
 # 1. 代码扫描 + 质量门禁（门槛先放低）
@@ -195,7 +223,7 @@ deploy-to-server:
   extends: [.linux-node]
   dependencies: [frontend-build]
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule"'
       variables:
         DEPLOY_DIR: "/opt/autotesthub"
         COMPOSE_PROJECT: "autotesthub"
@@ -243,7 +271,7 @@ smoke-deployed:
   stage: test
   extends: [.linux-node]
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule"'
       variables: { SMOKE_URL: "http://120.79.207.52:15173", ENV_NAME: "生产" }
     - if: '$CI_COMMIT_BRANCH =~ /^release/'
       variables: { SMOKE_URL: "http://120.79.207.52:15273", ENV_NAME: "预发布" }

@@ -3,19 +3,26 @@ import {
     Button,
     Card,
     Col,
-    Input,
+    DatePicker,
     Modal,
     Row,
+    Segmented,
+    Select,
     Space,
     Statistic,
     Table,
     Typography
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { DownloadOutlined, ExperimentOutlined, LinkOutlined } from '@ant-design/icons';
+import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
+import { DownloadOutlined, ExperimentOutlined, LinkOutlined, ReloadOutlined } from '@ant-design/icons';
 import { ReleaseArtifact, getReleaseArtifacts } from '../api';
 
+const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
+
+type TimeQuickFilter = 'all' | 'today' | '7d' | '30d' | 'custom';
 
 const formatDateTime = (date?: string) => {
     if (!date) return '-';
@@ -34,12 +41,69 @@ const formatBytes = (size?: number) => {
     return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
 };
 
+const artifactTime = (artifact: ReleaseArtifact) => artifact.built_at || artifact.created_at;
+
+const inTimeRange = (
+    artifact: ReleaseArtifact,
+    quickFilter: TimeQuickFilter,
+    customRange: [Dayjs | null, Dayjs | null] | null
+) => {
+    if (quickFilter === 'all') return true;
+
+    const value = artifactTime(artifact);
+    if (!value) return false;
+
+    const builtAt = dayjs(value);
+    if (!builtAt.isValid()) return false;
+
+    if (quickFilter === 'today') {
+        return builtAt.isAfter(dayjs().startOf('day')) && builtAt.isBefore(dayjs().endOf('day'));
+    }
+
+    if (quickFilter === '7d') {
+        return builtAt.isAfter(dayjs().subtract(7, 'day').startOf('day'));
+    }
+
+    if (quickFilter === '30d') {
+        return builtAt.isAfter(dayjs().subtract(30, 'day').startOf('day'));
+    }
+
+    if (customRange?.[0] && customRange?.[1]) {
+        return builtAt.isAfter(customRange[0].startOf('day')) && builtAt.isBefore(customRange[1].endOf('day'));
+    }
+
+    return true;
+};
+
 export const Artifacts: React.FC = () => {
     const [loading, setLoading] = useState(false);
-    const [artifacts, setArtifacts] = useState<ReleaseArtifact[]>([]);
-    const [artifactVersion, setArtifactVersion] = useState('');
-    const [artifactBranch, setArtifactBranch] = useState('');
+    const [allArtifacts, setAllArtifacts] = useState<ReleaseArtifact[]>([]);
+    const [artifactVersion, setArtifactVersion] = useState<string>();
+    const [artifactBranch, setArtifactBranch] = useState<string>();
+    const [timeQuickFilter, setTimeQuickFilter] = useState<TimeQuickFilter>('all');
+    const [customRange, setCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
     const [viewingArtifact, setViewingArtifact] = useState<ReleaseArtifact | null>(null);
+
+    const versionOptions = useMemo(() => (
+        Array.from(new Set(allArtifacts.map((item) => item.version).filter(Boolean)))
+            .sort((a, b) => b.localeCompare(a))
+            .map((version) => ({ label: version, value: version }))
+    ), [allArtifacts]);
+
+    const branchOptions = useMemo(() => (
+        Array.from(new Set(allArtifacts.map((item) => item.branch).filter(Boolean) as string[]))
+            .sort((a, b) => a.localeCompare(b))
+            .map((branch) => ({ label: branch, value: branch }))
+    ), [allArtifacts]);
+
+    const artifacts = useMemo(() => (
+        allArtifacts.filter((item) => {
+            const matchesVersion = !artifactVersion || item.version === artifactVersion;
+            const matchesBranch = !artifactBranch || item.branch === artifactBranch;
+            const matchesTime = inTimeRange(item, timeQuickFilter, customRange);
+            return matchesVersion && matchesBranch && matchesTime;
+        })
+    ), [allArtifacts, artifactVersion, artifactBranch, timeQuickFilter, customRange]);
 
     const artifactStats = useMemo(() => {
         const totalSize = artifacts.reduce((sum, item) => sum + (item.file_size || 0), 0);
@@ -53,10 +117,7 @@ export const Artifacts: React.FC = () => {
     const loadArtifacts = async () => {
         setLoading(true);
         try {
-            setArtifacts(await getReleaseArtifacts({
-                version: artifactVersion || undefined,
-                branch: artifactBranch || undefined
-            }));
+            setAllArtifacts(await getReleaseArtifacts());
         } catch (error) {
             console.error('Failed to load artifacts:', error);
         } finally {
@@ -67,6 +128,13 @@ export const Artifacts: React.FC = () => {
     useEffect(() => {
         loadArtifacts();
     }, []);
+
+    const resetFilters = () => {
+        setArtifactVersion(undefined);
+        setArtifactBranch(undefined);
+        setTimeQuickFilter('all');
+        setCustomRange(null);
+    };
 
     const artifactColumns: ColumnsType<ReleaseArtifact> = [
         {
@@ -87,7 +155,7 @@ export const Artifacts: React.FC = () => {
             title: '构建时间',
             dataIndex: 'built_at',
             key: 'built_at',
-            sorter: (a, b) => new Date(a.built_at || a.created_at).getTime() - new Date(b.built_at || b.created_at).getTime(),
+            sorter: (a, b) => new Date(artifactTime(a)).getTime() - new Date(artifactTime(b)).getTime(),
             defaultSortOrder: 'descend',
             render: (date: string, record) => formatDateTime(date || record.created_at)
         },
@@ -121,21 +189,48 @@ export const Artifacts: React.FC = () => {
             </Row>
             <Card>
                 <Space style={{ marginBottom: 16 }} wrap>
-                    <Input
+                    <Select
                         allowClear
-                        placeholder="按版本搜索"
+                        showSearch
+                        placeholder="按版本快速筛选"
                         value={artifactVersion}
-                        onChange={(event) => setArtifactVersion(event.target.value)}
-                        style={{ width: 180 }}
+                        onChange={setArtifactVersion}
+                        options={versionOptions}
+                        optionFilterProp="label"
+                        style={{ width: 260 }}
                     />
-                    <Input
+                    <Select
                         allowClear
-                        placeholder="按分支精确筛选"
+                        showSearch
+                        placeholder="按分支筛选"
                         value={artifactBranch}
-                        onChange={(event) => setArtifactBranch(event.target.value)}
-                        style={{ width: 220 }}
+                        onChange={setArtifactBranch}
+                        options={branchOptions}
+                        optionFilterProp="label"
+                        style={{ width: 240 }}
                     />
-                    <Button type="primary" onClick={loadArtifacts}>查询</Button>
+                    <Segmented
+                        value={timeQuickFilter}
+                        onChange={(value) => setTimeQuickFilter(value as TimeQuickFilter)}
+                        options={[
+                            { label: '全部时间', value: 'all' },
+                            { label: '今天', value: 'today' },
+                            { label: '近 7 天', value: '7d' },
+                            { label: '近 30 天', value: '30d' },
+                            { label: '自定义', value: 'custom' }
+                        ]}
+                    />
+                    <RangePicker
+                        allowClear
+                        disabled={timeQuickFilter !== 'custom'}
+                        value={customRange}
+                        onChange={(range) => {
+                            setCustomRange(range);
+                            if (range) setTimeQuickFilter('custom');
+                        }}
+                    />
+                    <Button icon={<ReloadOutlined />} onClick={loadArtifacts}>刷新</Button>
+                    <Button onClick={resetFilters}>重置</Button>
                 </Space>
                 <Table columns={artifactColumns} dataSource={artifacts} rowKey="id" loading={loading} />
             </Card>

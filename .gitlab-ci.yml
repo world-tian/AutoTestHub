@@ -2,10 +2,10 @@
 # AutoTestHub CI/CD 流水线（分支策略 + MR 本地部署测试版）
 #
 # 分支模型（2 条长期分支 + 短期 feature 分支；dev 可选）：
-#   feature/* --MR--> master ：scan→unit-test(+覆盖率)→build→deploy(本地 WSL docker)→test
-#                              全绿后 MR 显示 ✅，测过 + owner 才能合入（合并门禁见文档第六节）
-#   master  --(合入后)         ：同上全流程做回归（部署到本地 CI 实例，不碰线上）
-#   release/* --(每周从 master 拉)：build→deploy(线上 120.79.207.52)→test，给出报告
+#   feature/* --MR--> master ：scan→unit-test→build→deploy(本地 WSL docker)→test（合入前全套门禁）
+#                              全绿后 MR 显示 ✅，测过 + owner 才能合入
+#   master  --(合入后·持续部署)：build→deploy(生产 120.79.207.52)→冒烟→通知（不重复跑测试，MR 已测过）
+#   release/* --(版本发布)     ：build→deploy(生产)→冒烟→autotestrunner→通知
 #   dev     --(可选)           ：scan→unit-test→build 快速反馈
 #
 # Runner 路由（可配置）：改 .linux-node / .windows-node 的 tags 即可整体迁移节点。
@@ -44,27 +44,25 @@ variables:
   tags: [windows]
 
 # ---------- 可复用触发规则 ----------
-.rules-scan: &rules-scan                  # MR / master / dev
+.rules-scan: &rules-scan                  # MR / dev（master 合入后不重复扫描/单测）
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-  - if: '$CI_COMMIT_BRANCH == "master"'
   - if: '$CI_COMMIT_BRANCH == "dev"'
 
-.rules-build: &rules-build                # MR / master / dev / release
+.rules-build: &rules-build                # MR / master / dev / release（都要构建产物）
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   - if: '$CI_COMMIT_BRANCH == "master"'
   - if: '$CI_COMMIT_BRANCH == "dev"'
   - if: '$CI_COMMIT_BRANCH =~ /^release/'
 
-.rules-local: &rules-local                # MR / master（本地部署+测试+清理）
+.rules-local: &rules-local                # 仅 MR（本地部署+冒烟+清理，做合入前门禁）
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-  - if: '$CI_COMMIT_BRANCH == "master"'
 
-.rules-test: &rules-test                  # MR / master / release（autotestrunner）
+.rules-test: &rules-test                  # MR / release（autotestrunner；master 合入后不重复跑）
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-  - if: '$CI_COMMIT_BRANCH == "master"'
   - if: '$CI_COMMIT_BRANCH =~ /^release/'
 
-.rules-prod: &rules-prod                  # 仅 release（线上发布）
+.rules-prod: &rules-prod                  # master（持续部署）+ release（版本发布）→ 生产
+  - if: '$CI_COMMIT_BRANCH == "master"'
   - if: '$CI_COMMIT_BRANCH =~ /^release/'
 
 # 本地 CI 实例的隔离参数（部署/清理共用）
@@ -167,7 +165,7 @@ deploy-local:
     - docker compose up -d --build
     - docker compose ps
 
-# 4b. release：部署到线上服务器
+# 4b. master(合入即上线) / release(版本发布)：部署到生产服务器
 deploy-to-server:
   stage: deploy
   extends: [.linux-node]
@@ -180,7 +178,7 @@ deploy-to-server:
     - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
-    - echo "Deploying release to $DEPLOY_HOST ..."
+    - echo "Deploying to production $DEPLOY_HOST ($CI_COMMIT_REF_NAME) ..."
     - ssh $DEPLOY_USER@$DEPLOY_HOST "mkdir -p /opt/autotesthub"
     - rsync -avz --delete --exclude '.git/' --exclude 'frontend/node_modules/' --exclude 'backend/venv/' --exclude 'data/' ./ $DEPLOY_USER@$DEPLOY_HOST:/opt/autotesthub/
     - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /opt/autotesthub && docker compose down --remove-orphans && docker compose up -d --build && docker compose ps"
@@ -202,7 +200,20 @@ app-smoke-test:
     - curl -fsS "http://localhost:$FRONTEND_PORT/" >/dev/null && echo "前端可访问 OK"
     - 'curl -fsS "http://localhost:$FRONTEND_PORT/api/defects" >/dev/null && echo "后端 /api 可访问 OK" || echo "WARN: /api 冒烟未通过(接口可能需鉴权/数据，先不阻断)"'
 
-# 5b. MR/master/release：autotestrunner demo plan（Windows）
+# 5b. master/release：部署后对【生产】做接口冒烟（确认线上真起来了）
+prod-smoke:
+  stage: test
+  extends: [.linux-node]
+  rules: *rules-prod
+  variables:
+    PROD_URL: "http://120.79.207.52:15173"
+  script:
+    - echo "等待线上实例就绪..."
+    - for i in $(seq 1 20); do curl -fsS "$PROD_URL/" >/dev/null 2>&1 && break || sleep 3; done
+    - curl -fsS "$PROD_URL/" >/dev/null && echo "线上前端可访问 OK"
+    - 'curl -fsS "$PROD_URL/api/ci-reports" >/dev/null && echo "线上后端 /api 可访问 OK" || echo "WARN: 线上 /api 冒烟未通过"'
+
+# 5c. MR/release：autotestrunner demo plan（Windows）
 autotestrunner-demo:
   stage: test
   extends: [.windows-node]
@@ -234,8 +245,6 @@ cleanup-local:
     <<: *ci-instance
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      when: always
-    - if: '$CI_COMMIT_BRANCH == "master"'
       when: always
   script:
     - docker compose down -v --remove-orphans || true

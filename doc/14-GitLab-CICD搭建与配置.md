@@ -10,16 +10,19 @@
 | 环节 | 状态 | 说明 |
 |------|------|------|
 | 代码托管（SSH） | ✅ | `ssh://git@gitlab.deeplore.cc:2222/liutong/autotesthub.git` |
-| 分支策略 | ✅ | master（集成）+ release（每周发布）+ 短期 feature/*；MR 驱动 |
-| WSL Runner | ✅ | shell+bash，`tags:[wsl]`：扫描/编译/本地&线上部署/接口测试/上报 |
+| 分支策略 | ✅ | master（集成→**持续部署生产**）+ release/X.Y.Z（**版本发布→预发布**）+ feature/*；MR 驱动 |
+| WSL Runner | ✅ | shell+bash，`tags:[wsl]`：扫描/编译/出包/部署/接口测试/上报 |
 | Windows Runner | ✅ | shell+powershell，`tags:[windows]`：单元测试/autotestrunner |
-| 代码扫描 + 门禁 | ✅ | bandit（后端·MEDIUM+ 阻断）+ tsc（前端·informational） |
-| 单元测试 + 覆盖率 | ✅ | pytest + pytest-cov，覆盖率显示在 MR |
+| 代码扫描 + 门禁 | ✅ | bandit（后端·MEDIUM+ 阻断）+ tsc（前端·informational），仅 MR |
+| 单元测试 + 覆盖率 | ✅ | pytest + pytest-cov，覆盖率显示在 MR，仅 MR |
 | MR 预合并编译 | ✅ | MR 流水线先合 master 再编译测试（贴近 EE Merged Results） |
-| 本地部署 + 测试 | ✅ | MR/master：WSL docker 隔离实例（autotesthub-ci:15373）+ 接口冒烟 |
-| 线上部署 | ✅ | release 分支：rsync+ssh → 服务器 docker compose（15173） |
-| 结果上传云端 | ✅ | 汇总 POST 到 `/api/report-records`，`/reports` 页展示 |
+| **三环境隔离** | ✅ | MR=本地 WSL docker(15373)；master=**生产**(15173)；release=**预发布**(15273) |
+| master 持续部署 | ✅ | 合入即上生产：编译→部署生产→冒烟→通知（不重复测试） |
+| release 版本发布 | ✅ | release/X.Y.Z：编译→**出版本包**→部署预发布→测试→整体报告 |
+| 结果上传云端 | ✅ | 汇总整条流水线 + 各 job 明细 POST 到 `/api/ci-reports` |
+| 持续集成报告页 | ✅ | AutoTestHub `/reports` → **「持续集成报告」tab**：触发人/结果/耗时/到秒时间，详情看各环节日志、跳 GitLab |
 | 飞书通知 | ✅ | 飞书应用给**提 PR 的人**发私信（编译/部署/测试结果） |
+| 流水线触发限制 | ✅ | 只有 **MR 和 release 分支**触发流水线（普通分支 push 不跑） |
 
 > **GitLab 是 CE 社区版**：Merged Results Pipeline、Required Approvals 是 Premium 功能，CE 没有。
 > 用「Pipelines must succeed + 保护分支 + 预合并编译」达到等效门禁，见第八节。
@@ -28,30 +31,114 @@
 
 ## 二、分支策略与流水线流程
 
-**分支模型（2 条长期分支 + 短期 feature 分支，不需要 dev）：**
+**分支模型与三环境（2 条长期分支 + 短期 feature 分支）：**
 
 ```
-feature/* --MR--> master   ：scan→unit-test(+覆盖率)→build→deploy(本地WSL docker)→test
-                             全绿 → MR 显示 ✅ → 测过 + owner 才能合入
-master  --(合入后)          ：同上全流程做回归（部署本地 CI 实例，不碰线上）
-release/* --(每周从 master 拉)：build→deploy(线上120.79.207.52)→test，给出报告
-dev     --(可选，未启用)     ：scan→unit-test→build 快速反馈（rules 已预留，建了即生效）
+feature/* --MR--> master    ：scan→unit-test→build→deploy(本地WSL docker 15373)→test
+                              合入前全套门禁；全绿 → MR ✅ → 测过 + owner 合入
+master  --(合入即持续部署)    ：build→deploy(生产 15173)→冒烟→通知（MR 已测过，不重复）
+release/X.Y.Z --(版本发布)   ：build→出版本包(autotesthub-vX.Y.Z.tar.gz)→deploy(预发布 15273)
+                              →冒烟+autotestrunner→整体测试报告（确认出包+版本号+报告）
+dev --(可选，未启用)         ：scan→unit-test→build 快速反馈
 ```
 
-**流水线 5 个 stage（+ .post 收尾）：**
+**三套环境互相隔离**（同一服务器 120.79.207.52，独立 compose 项目名/端口/目录/DB 卷）：
 
-| stage | 场景 | 作业 | 节点 |
-|-------|------|------|------|
-| scan | MR/master/dev | sast-bandit、typecheck-frontend | WSL |
-| unit-test | MR/master/dev | unit-test-backend（+覆盖率） | Windows |
-| build | MR/master/dev/release | backend-compile、frontend-build | WSL |
-| deploy | MR/master：本地；release：线上 | deploy-local / deploy-to-server | WSL |
-| test | MR/master：接口冒烟；+autotestrunner | app-smoke-test、autotestrunner-demo | WSL / Windows |
-| .post | 所有（when:always） | cleanup-local（拆本地实例）、report-notify（上报+飞书） | WSL |
+| 环境 | 触发 | 端口 | 目录 / 项目名 | 用途 |
+|------|------|------|--------------|------|
+| 本地 | MR | 15373 | WSL docker `autotesthub-ci` | 合入前门禁，跑完即焚 |
+| **生产** | master 合入 | 15173 | `/opt/autotesthub` | 正式线上，持续部署 |
+| **预发布** | release/X.Y.Z | 15273 | `/opt/autotesthub-release` | 版本出包确认 + 整体测试 |
 
-> **人工卡点 = MR 审批 + owner 合入**（不是流水线里的手动按钮，已去掉 gate）。
+**流水线 6 个 stage（+ .post 收尾）：**
+
+| stage | 跑在哪些场景 | 作业 |
+|-------|------------|------|
+| scan | 仅 MR | sast-bandit、typecheck-frontend |
+| unit-test | 仅 MR | unit-test-backend（+覆盖率） |
+| build | MR / master / release | backend-compile、frontend-build |
+| **package** | **仅 release** | package-release（出版本包） |
+| deploy | MR=本地；master=生产；release=预发布 | deploy-local / deploy-to-server |
+| test | MR=本地冒烟+autotestrunner；master=生产冒烟；release=预发布冒烟+autotestrunner | app-smoke-test / smoke-deployed / autotestrunner-demo |
+| .post | 所有（when:always） | cleanup-local（仅MR）、report-notify（上报+飞书） |
+
+> **人工卡点 = MR 审批 + owner 合入**；master 合入即上生产，所以合入前的 MR 门禁是质量关键。
 
 **Runner 路由可配置**：`.gitlab-ci.yml` 顶部 `.linux-node`(wsl) / `.windows-node`(windows) 两个 extends 锚点集中定义 tags，上新节点改这两处即可整体迁移。
+
+---
+
+## 二·五、操作手册：如何触发构建与上线
+
+> ⚠️ 前提：**WSL Runner 和 Windows Runner 都要在运行**（见 4.4 启动命令）。
+> 普通分支 push **不会**触发流水线，只有 **MR** 和 **release 分支**才触发。
+
+### A. 日常改代码 → 提 MR → 合入（验证不上线）
+
+```bash
+# 1. 从最新 master 切 feature 分支
+git checkout master && git pull
+git checkout -b feature/xxx
+
+# 2. 改代码、提交
+git add -A && git commit -m "feat: xxx"
+
+# 3. 推送并【自动创建 MR】（关键：push 选项，免去网页手点）
+git push -o merge_request.create \
+         -o merge_request.target=master \
+         -o merge_request.remove_source_branch \
+         -u origin feature/xxx
+```
+
+- 推上去 GitLab 自动建好 MR → **MR 流水线自动跑**：扫描→单测→编译→本地部署(WSL docker 15373)→测试。
+- 全绿后：MR 页 ✅，去 `/reports`「持续集成报告」看明细，飞书收到私信。
+- **owner 在 MR 页点 Merge** 合入 master（需先满足 7 节的合并门禁）。
+- 不带 push 选项时：push 只给一个「New MR」链接，仍要手点 **Create merge request**（GitLab 不会自动建 MR）。
+
+### B. 上生产（master 合入即持续部署）
+
+> **master 就是生产**——MR 合入 master 后自动跑：`编译 → 部署生产(15173) → 冒烟 → 飞书通知`，不再重复测试（MR 已测过）。
+
+- 你**什么都不用额外做**：A 步把 MR 合入 master，就自动上生产。
+- 部署完访问 `http://120.79.207.52:15173`；提交人收到飞书部署通知；`/reports`「持续集成报告」有该次记录。
+- **验证已上线**：`curl http://120.79.207.52:15173/api/ci-reports` 返回 200。
+- **前置**：`master` 设为 Protected；`SSH_PRIVATE_KEY/DEPLOY_HOST/DEPLOY_USER` 为受保护变量（master/release 才注入）。
+
+### C. 版本发布（出包 + 版本号 + 整体测试报告）
+
+> 版本发布走 **`release/X.Y.Z`** 分支（**分支名里的 X.Y.Z 就是版本号**）。它部署到**预发布环境(15273)**，不碰生产。
+
+```bash
+# 从已上线的 master 切版本分支（X.Y.Z 自己定，如 1.2.0）
+git fetch origin
+git checkout -b release/1.2.0 origin/master
+git push -u origin release/1.2.0
+```
+
+触发流水线：`编译 → 出版本包 → 部署预发布(15273) → 冒烟 + autotestrunner → 整体测试报告`。产出：
+
+- **版本包**：`package-release` 作业打出 `autotesthub-v1.2.0.tar.gz`（+ `VERSION.txt`），在该流水线 **Artifacts** 里下载，保留 3 个月。
+- **预发布环境**：`http://120.79.207.52:15273` 可访问该版本，用于出包确认。
+- **整体测试报告**：`report-notify` 把这条流水线（编译/出包/部署/冒烟/autotestrunner）汇总上传到 `/reports`「持续集成报告」，名字带版本号；飞书通知提交人。
+
+> **重新触发同一版本**（重测/重出包，无代码改动）：`git checkout release/1.2.0 && git commit --allow-empty -m "rebuild" && git push`（空提交，详见 D）。
+> **前置**：`release*` 设为 **Protected**（否则受保护变量注入不到，部署报 `libcrypto` 错）。
+
+### D. 手动重跑 / 补通知 / 重新触发
+
+- **重新触发整条流水线**（无代码改动）：`git commit --allow-empty -m "trigger: rerun" && git push origin <分支>`；或 UI 里 **Retry** 整条。
+- **只 Retry 单个 job 不会重跑 `.post` 的 report-notify**（不会补发上报/通知）。要补发就 Retry 整条，或单独 Retry `report-notify`。
+- 普通 `git push` 报 `Everything up-to-date` = 没有新提交，不会触发流水线 → 用上面的空提交。
+
+### E. 常见排查
+
+| 现象 | 原因 / 处理 |
+|------|------------|
+| job 一直 pending | 对应 Runner 没在跑，或标签不匹配（windows job 需 Windows Runner 在线且打了 `windows` 标签） |
+| 部署报 `Error loading key libcrypto` | `master`/`release*` 没设 Protected → 受保护变量为空。设 Protected 后 Retry |
+| `/api/...` 上传 500 | 线上后端是旧代码，需合一次 master（或重新部署）更新 |
+| MR 流水线缺少上报/通知 | `GITLAB_API_TOKEN` 若是 Protected，MR(非保护分支)拿不到 → 改为非 Protected |
+| 飞书没收到 | `FEISHU_APP_ID/SECRET` 未配，或 `GITLAB_USER_EMAIL` ≠ 飞书邮箱（用 `FEISHU_USER_MAP` 兜底） |
 
 ---
 
@@ -124,13 +211,15 @@ CE 无 Merged Results Pipeline，故在 MR 流水线里手动合并目标分支�
 - `docker-compose.yml` 前端端口已参数化 `"${FRONTEND_PORT:-15173}:80"`（线上默认不变）。
 - 容器 detached 跨 stage 存活给测试用；`.post` 的 `cleanup-local` 无论成败 `docker compose down -v`。
 
-### 5.3 结果上传云端 + 飞书私信（`ci/report_notify.py`）
+### 5.3 持续集成报告（云端 + 飞书私信，`ci/report_notify.py`）
 
-- `.post` 的 `report-notify`（`when: always`）汇总各 job 状态 + 覆盖率：
-  - **上传云端**：POST `http://120.79.207.52:15173/api/report-records`，在 `/reports` 页展示。
+- `.post` 的 `report-notify`（`when: always`）汇总整条流水线 + 各 job 明细：
+  - **上传云端**：一次性 POST `http://120.79.207.52:15173/api/ci-reports`（流水线 + jobs 数组，含各 job 状态/耗时/覆盖率/清理后日志/GitLab 链接）。
+  - **展示**：AutoTestHub `/reports` → **「持续集成报告」tab**（独立于「AI 分析报告」）。列表显示触发人/结果/分支/覆盖率/耗时/到秒时间；详情弹窗展开看各环节日志、跳 GitLab。
   - **飞书通知**：用飞书应用给**提 PR 的人**（`GITLAB_USER_EMAIL`）发私信。两边邮箱不一致时用 `FEISHU_USER_MAP` 兜底。
-- 脚本仅用标准库（WSL py3.14 免装依赖）；读 job 状态需 `GITLAB_API_TOKEN`。
-- ⚠️ 后端曾有 bug：`create_report_record` 把 schema 多出的 `feature` 塞进模型导致所有报告 POST 500，已修（只取模型真实列）。**该修复需经一次 release 部署到线上才生效**。
+- 后端：`CIReport` / `CIReportJob` 两张表 + `POST/GET /api/ci-reports`、`GET /api/ci-reports/{id}`；`app.seed` 的 `create_all` 部署时自动建表。
+- 脚本仅用标准库（WSL py3.14 免装依赖）；读 job 状态/日志需 `GITLAB_API_TOKEN`。
+- ⚠️ 历史坑：`create_report_record` 曾把 schema 多出的 `feature` 塞进模型导致 500（已修，只取模型真实列）；任何后端改动**都需经一次 release 部署到线上才生效**。
 
 ---
 
@@ -141,12 +230,12 @@ CE 无 Merged Results Pipeline，故在 MR 流水线里手动合并目标分支�
 ```yaml
 stages: [scan, unit-test, build, deploy, test]
 
-workflow:                       # 避免分支与 MR 重复跑
+workflow:                       # 只有 MR / master / release 触发，普通分支 push 不跑
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
-      when: never
-    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH =~ /^release/'
+    - when: never
 
 variables: { GIT_DEPTH: "0" }
 
@@ -207,7 +296,7 @@ report-notify:        # .post·WSL，when:always，python3 ci/report_notify.py�
 services:
   backend:
     build: { context: ./backend }
-    volumes: [ "./data:/app/data" ]
+    volumes: [ "db-data:/app/data" ]   # Docker 具名卷(避免挂载 checkout 目录的权限问题)
     environment: [ "DATABASE_URL=sqlite:////app/data/autotesthub.db", "FEISHU_APP_ID=${FEISHU_APP_ID}", ... ]
     command: sh -c "python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     restart: always

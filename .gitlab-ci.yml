@@ -151,8 +151,8 @@ frontend-build:
     expire_in: 1 week
 
 # ============================================================
-# 3b. 出包（仅 release/X.Y.Z）：打出带版本号的发布包
-#     版本号 = 分支名去掉 release/ 前缀（如 release/1.2.0 → 1.2.0）
+# 3b. 出包（仅 release/* 分支）：打出带版本号的发布包
+#     版本号 = 分支名去掉 release/ 前缀（按时间命名，如 release/2026-06-24-1430 → 2026-06-24-1430）
 # ============================================================
 package-release:
   stage: package
@@ -162,10 +162,10 @@ package-release:
   dependencies: [frontend-build]      # 取已编译的 frontend/dist
   script:
     - 'VERSION="${CI_COMMIT_REF_NAME#release/}"'
-    - echo "📦 出包版本 v$VERSION（commit $CI_COMMIT_SHORT_SHA）"
+    - echo "📦 出包 $VERSION（commit $CI_COMMIT_SHORT_SHA, 构建时间 $(date -u +%FT%TZ)）"
     - mkdir -p dist-pkg
-    - tar czf "dist-pkg/autotesthub-v${VERSION}.tar.gz" --exclude='.git' --exclude='frontend/node_modules' --exclude='backend/venv' --exclude='dist-pkg' frontend/dist backend docker-compose.yml
-    - 'echo "v${VERSION}  ${CI_COMMIT_SHA}  $(date -u +%FT%TZ)" > dist-pkg/VERSION.txt'
+    - tar czf "dist-pkg/autotesthub-${VERSION}.tar.gz" --exclude='.git' --exclude='frontend/node_modules' --exclude='backend/venv' --exclude='dist-pkg' frontend/dist backend docker-compose.yml
+    - 'printf "version: %s\ncommit:  %s\nbuilt:   %s\n" "$VERSION" "$CI_COMMIT_SHA" "$(date -u +%FT%TZ)" > dist-pkg/VERSION.txt'
     - ls -lh dist-pkg/
   artifacts:
     name: "autotesthub-${CI_COMMIT_REF_NAME}"
@@ -208,11 +208,13 @@ deploy-to-server:
         DEPLOY_PORT: "15273"
         ENV_NAME: "预发布 release"
   before_script:
+    # 受保护变量缺失早失败（非保护分支拿不到 → 给出清晰提示，而非诡异的 ssh-keyscan 报错）
+    - 'for v in SSH_PRIVATE_KEY DEPLOY_HOST DEPLOY_USER; do eval "x=\$$v"; [ -n "$x" ] || { echo "❌ 变量 $v 为空：该分支可能未受保护，请把 release/* 设为 Protected（Settings→Repository→Protected branches）"; exit 1; }; done'
     - eval $(ssh-agent -s)
     - 'if [ -f "$SSH_PRIVATE_KEY" ]; then chmod 400 "$SSH_PRIVATE_KEY" && ssh-add "$SSH_PRIVATE_KEY" > /dev/null; else echo "$SSH_PRIVATE_KEY" | tr -d "\r" | ssh-add - > /dev/null; fi'
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
-    - chmod 644 ~/.ssh/known_hosts
+    - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+    - chmod 644 ~/.ssh/known_hosts 2>/dev/null || true
   script:
     - echo "Deploying [$ENV_NAME] -> $DEPLOY_HOST:$DEPLOY_PORT ($CI_COMMIT_REF_NAME)"
     - ssh $DEPLOY_USER@$DEPLOY_HOST "mkdir -p $DEPLOY_DIR"

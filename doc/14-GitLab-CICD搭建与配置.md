@@ -352,3 +352,65 @@ gitlab/gitlab-ce      0.0.0.0:80->80/tcp ...   # 独立 Docker 网络，互不�
 - 前端 `/reports` 新增「制品管理」tab，支持制品统计、版本/分支筛选、下载制品、跳转流水线和出包 job。
 - 已补后端接口单元测试，前端构建通过。
 - 新增 `ci/import_gitlab_artifacts.py` 和手动 CI job `import-gitlab-artifacts`：可从 GitLab 历史 `package-release` job 回填现有 release 制品元数据；接口按 `job_id` / `version+pipeline_id` 幂等去重，重复执行不会刷重复记录。
+---
+
+## 2026-06-25 记录：master 直推治理项
+
+状态：暂时保留，后续处理。
+
+当前 GitLab 项目仍允许本地直接 `git push origin master`，因此绕过 MR 也可以触发 master 持续部署。短期为了调试和应急先不关闭，但这会削弱“必须先走 MR 门禁再合入生产”的流程约束。
+
+后续建议在 GitLab 项目中启用服务端保护：
+
+1. 进入 `Settings -> Repository -> Protected branches`。
+2. 将 `master` 设置为 Protected。
+3. `Allowed to push` 设置为 `No one`。
+4. `Allowed to merge` 设置为 `Maintainers` 或按团队权限设置。
+5. 关闭 force push。
+6. 配合 `Settings -> Merge requests` 中的 `Pipelines must succeed`，确保只能通过 MR 合入后触发生产部署。
+
+目标效果：开发者只能推 `feature/*`，通过 MR 完成扫描、单测、构建、本地部署验证和测试；MR 合入 `master` 后再自动部署生产，避免未经门禁的代码直接上线。
+
+---
+
+## 2026-06-26 更新：构建类型与制品命名体系（db / wb / rc / 正式）
+
+状态：✅ 已落地并提交 master。把"定时构建"细化为 4 类，并统一制品命名。
+
+### 四类构建
+
+| 类型 | 触发（Schedules 变量） | 跑在哪 | 版本号 | 制品名 |
+|------|----------------------|--------|--------|--------|
+| **日构建 db** | `SCHEDULE_TASK=dailybuild` | master 快照（不拉分支） | `db/202606261511` | `autotesthub-db202606261511.tar.gz` |
+| **周构建 wb** | `SCHEDULE_TASK=weeklybuild` | master 快照（不拉分支） | `wb/202606261511` | `autotesthub-wb202606261511.tar.gz` |
+| **周期 RC** | `SCHEDULE_TASK=cut`（拉 `release/rc202606261511`） | release 全流程（预发布 15273） | `rc/202606261511` | `autotesthub-rc202606261511.tar.gz` |
+| **正式版** | 手动拉 `release/1.2.0-pvt` | release 全流程（预发布 15273） | `1.2.0-pvt` | `autotesthub-1.2.0-pvt.tar.gz` |
+
+- **db/wb = master 快照构建**：定时直接在 master 上跑 `扫描→单测→编译→出包→本地一次性实例(15373)部署+冒烟+autotestrunner→清理`，**不碰生产/预发布**。版本号带斜杠（`db/`、`wb/`）由 `package-build` 现场生成；制品文件名去斜杠紧贴前缀。
+- **rc = 周期发布候选**：定时 `cut-rc-release` 拉一条 `release/rc<时间>` 分支，自动触发版本发布全流程（出包 + 部署预发布 + 测试报告）。登记版本号补斜杠 `rc/<时间>` 与 db/wb 统一，文件名仍无斜杠。
+- **正式版**：从已上线 master 手动拉 `release/<主.次.修-阶段>`，走同一条 release 流水线。
+
+### 关键实现
+
+- `.gitlab-ci.yml`：
+  - `package-build`（合并 db/wb）：`case $SCHEDULE_TASK` 映射 `dailybuild→db` / `weeklybuild→wb`。
+  - 规则锚点用 `$SCHEDULE_TASK =~ /build$/` 同时匹配 daily/weekly，复用 MR 那套本地部署+测试作业。
+  - `package-release`：用 `DISPLAY_VERSION`（rc 补斜杠）登记版本号，文件名仍用无斜杠 `VERSION`。
+  - `cut-rc-release`：拉 `release/rc$(date +%Y%m%d%H%M)`。
+- `ci/import_gitlab_artifacts.py`：
+  - 通用 job 产物 `version`/`branch` = **实际分支名**；MR 流水线 `refs/merge-requests/N/head` 经 `resolve_ref()` 查 MR API 解析成**源分支名**（如 `feature/xxx`），不再拼 `-流水线号`。
+  - 制品名统一 `autotesthub-<job名>-<北京时间YYYYMMDDHHMM>.zip`（`_stamp()` 把 UTC 时间 +8）。
+  - package-release 回填路径同样把 rc 登记为 `rc/<时间>`。
+- `ci/cleanup_releases.py`：正则 `^release/(?:rc)?\d{4}…` 兼容 rc 前缀 + 无横杠 + 旧带横杠；语义正式版本（`release/1.2.0-pvt`）保留不删。
+- `ci/report_notify.py`：通知动作区分 `cut`(RC) / `cleanup` / `dailybuild` / `weeklybuild`。
+
+### 需在 GitLab 建的 Schedules（CI/CD → Schedules，Target 均 master）
+
+| Description | cron | 变量 |
+|-------------|------|------|
+| 每日构建 | `0 2 * * *` | `SCHEDULE_TASK=dailybuild` |
+| 每周构建 | `0 3 * * 1` | `SCHEDULE_TASK=weeklybuild` |
+| RC 发布 | `0 4 * * 1`（按节奏） | `SCHEDULE_TASK=cut` |
+| 清理旧分支 | `0 5 1 * *` | `SCHEDULE_TASK=cleanup` |
+
+> 时间按服务器时区解析：GitLab(Docker) 已设 `gitlab_rails['time_zone'] = 'Asia/Shanghai'`，故 cron 即北京时间。

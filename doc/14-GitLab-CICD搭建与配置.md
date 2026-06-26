@@ -445,3 +445,45 @@ gitlab/gitlab-ce      0.0.0.0:80->80/tcp ...   # 独立 Docker 网络，互不�
 - CI 出包时间 `date -u`(UTC) → `date`(本地北京)，使 `package-build`/`package-release` 登记的构建时间也对齐。
 
 > 约定：**服务端生成的时间一律用 `beijing_now()`，不要再用 `datetime.utcnow`**。已入库的历史记录不回填，仅新记录生效。
+
+---
+
+## 2026-06-26 更新：制品直接下载（后端代理 GitLab artifact）
+
+状态：✅ 已修复并部署验证可下载。
+
+**现象**：制品管理点「下载」会跳转 GitLab（要登录），下不下来。
+
+**根因**：制品的 `download_url` 是 GitLab job artifact 直链，**私有项目的 artifact 下载需要鉴权**，浏览器直接访问就被重定向到 GitLab 登录页。
+
+**修复**：后端代理下载，新增 `GET /api/artifacts/{id}/download`：
+
+- 后端带 `GITLAB_API_TOKEN` 从 GitLab 拉流（`StreamingResponse`）回传，浏览器直接下载。
+- 发布包（`package-release`/`package-build`）：取 archive 内单文件 → `GET /projects/:id/jobs/:job_id/artifacts/<file_name 路径>`。
+- 通用 job 产物：取整包 → `GET /projects/:id/jobs/:job_id/artifacts`（zip）。
+- artifact 已过期返回 410；后端未配 token 返回 503。
+- 前端 `Artifacts.tsx` 两处下载按钮改打 `/api/artifacts/{id}/download`。
+
+**所需配置**：
+
+- `backend/app/core/config.py` 新增 `GITLAB_API_URL` / `GITLAB_API_TOKEN` / `GITLAB_PROJECT`。
+- `docker-compose.yml` backend 注入这三个环境变量；`deploy-to-server` 把 CI 变量透传进服务器容器。
+- CI 变量 `GITLAB_API_TOKEN` 需 **`read_api`** 权限、且**非 Protected**（部署任务要能拿到注入容器）。
+
+**关键坑（容器连不上 GitLab → 504）**：
+
+后端容器访问本机公网 IP（`gitlab.deeplore.cc` → 120.79.207.52）上的 GitLab，**hairpin NAT 不通**，`urlopen` 卡到 60s 超时 → nginx 504。
+
+修法：`docker-compose.yml` 给 backend 加
+
+```yaml
+    extra_hosts:
+      - "gitlab.deeplore.cc:host-gateway"
+```
+
+把域名在容器内解析到**宿主机网关**（GitLab 跑在宿主机 80 端口），容器直达。验证：
+
+```bash
+docker inspect autotesthub-backend-1 --format '{{.HostConfig.ExtraHosts}}'   # [gitlab.deeplore.cc:host-gateway]
+docker exec autotesthub-backend-1 curl -sI http://gitlab.deeplore.cc/api/v4/version   # 200/401 即可达
+```

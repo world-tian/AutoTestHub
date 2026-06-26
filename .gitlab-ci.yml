@@ -203,10 +203,10 @@ package-release:
     - 'echo "Packaging release $DISPLAY_VERSION → autotesthub-${VERSION}.tar.gz (commit $CI_COMMIT_SHORT_SHA)"'
     - mkdir -p dist-pkg
     - tar czf "dist-pkg/autotesthub-${VERSION}.tar.gz" --exclude='.git' --exclude='frontend/node_modules' --exclude='backend/venv' --exclude='dist-pkg' frontend/dist backend docker-compose.yml
-    - 'printf "version: %s\ncommit:  %s\nbuilt:   %s\n" "$DISPLAY_VERSION" "$CI_COMMIT_SHA" "$(date -u +%FT%TZ)" > dist-pkg/VERSION.txt'
+    - 'printf "version: %s\ncommit:  %s\nbuilt:   %s\n" "$DISPLAY_VERSION" "$CI_COMMIT_SHA" "$(date +%FT%T)" > dist-pkg/VERSION.txt'
     - |
       export PKG="dist-pkg/autotesthub-${VERSION}.tar.gz"
-      export BUILT_AT="$(date -u +%FT%TZ)"
+      export BUILT_AT="$(date +%FT%T)"
       export SIZE="$(wc -c < "$PKG" | tr -d " ")"
       export SHA256="$(sha256sum "$PKG" | awk '{print $1}')"
       export DOWNLOAD_URL="$CI_PROJECT_URL/-/jobs/$CI_JOB_ID/artifacts/file/$PKG"
@@ -264,12 +264,12 @@ package-build:
     - 'export STAMP="$(date +%Y%m%d%H%M)"'
     - 'export VERSION="${TYPE}/${STAMP}"'
     - 'export PKG="dist-pkg/autotesthub-${TYPE}${STAMP}.tar.gz"'
-    - 'echo "Packaging $SCHEDULE_TASK $VERSION (commit $CI_COMMIT_SHORT_SHA, built $(date -u +%FT%TZ))"'
+    - 'echo "Packaging $SCHEDULE_TASK $VERSION (commit $CI_COMMIT_SHORT_SHA, built $(date +%FT%T))"'
     - mkdir -p dist-pkg
     - tar czf "$PKG" --exclude='.git' --exclude='frontend/node_modules' --exclude='backend/venv' --exclude='dist-pkg' frontend/dist backend docker-compose.yml
-    - 'printf "version: %s\ncommit:  %s\nbuilt:   %s\n" "$VERSION" "$CI_COMMIT_SHA" "$(date -u +%FT%TZ)" > dist-pkg/VERSION.txt'
+    - 'printf "version: %s\ncommit:  %s\nbuilt:   %s\n" "$VERSION" "$CI_COMMIT_SHA" "$(date +%FT%T)" > dist-pkg/VERSION.txt'
     - |
-      export BUILT_AT="$(date -u +%FT%TZ)"
+      export BUILT_AT="$(date +%FT%T)"
       export SIZE="$(wc -c < "$PKG" | tr -d " ")"
       export SHA256="$(sha256sum "$PKG" | awk '{print $1}')"
       export DOWNLOAD_URL="$CI_PROJECT_URL/-/jobs/$CI_JOB_ID/artifacts/file/$PKG"

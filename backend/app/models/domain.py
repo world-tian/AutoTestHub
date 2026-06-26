@@ -1,12 +1,18 @@
 from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, Text, JSON
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 import uuid
 from app.database import Base
 
 def generate_uuid():
     return str(uuid.uuid4())
+
+def beijing_now():
+    """北京时间（UTC+8）朴素值。GitLab(time_zone=Asia/Shanghai) 返回的就是北京朴素时间，
+    前端 new Date() 对无时区字符串按本地(北京)解析，故服务端生成的时间统一用北京时间，
+    避免「生成时间」比实际差 8 小时。"""
+    return datetime.utcnow() + timedelta(hours=8)
 
 class User(Base):
     __tablename__ = "users"
@@ -16,7 +22,7 @@ class User(Base):
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     
     social_accounts = relationship("UserSocial", back_populates="user", cascade="all, delete-orphan")
 
@@ -28,7 +34,7 @@ class UserSocial(Base):
     uid = Column(String, index=True, nullable=False) # 飞书 open_id
     union_id = Column(String, index=True, nullable=True) # 飞书 union_id
     extra_data = Column(JSON, nullable=True) # 飞书原始信息
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
 
     user = relationship("User", back_populates="social_accounts")
 
@@ -39,7 +45,7 @@ class Project(Base):
     description = Column(Text, nullable=True)
     working_dir = Column(String, nullable=True) # 默认工作目录
     test_command = Column(String, nullable=True) # 默认执行命令
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     
     requirements = relationship("Requirement", back_populates="project")
     test_cases = relationship("TestCase", back_populates="project")
@@ -58,7 +64,7 @@ class Requirement(Base):
     external_id = Column(String, nullable=True)  # Jira ID, 飞书 ID 等
     external_source = Column(String, nullable=True)  # jira, feishu, manual
     external_data = Column(JSON, nullable=True)  # 原始数据
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     
     project = relationship("Project", back_populates="requirements")
     test_cases = relationship("TestCase", back_populates="requirement")
@@ -79,8 +85,8 @@ class TestCase(Base):
     # 版本管理
     version = Column(Integer, default=1)
     previous_version_id = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now)
     
     project = relationship("Project", back_populates="test_cases")
     requirement = relationship("Requirement", back_populates="test_cases")
@@ -103,7 +109,7 @@ class ExecutionRun(Base):
     # 时间
     started_at = Column(DateTime, nullable=True)
     ended_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     
     project = relationship("Project", back_populates="execution_runs")
     results = relationship("ExecutionResult", back_populates="run")
@@ -122,7 +128,7 @@ class ExecutionResult(Base):
     start_time = Column(DateTime, nullable=True) # 用例开始执行时间，用于对齐全局日志
     end_time = Column(DateTime, nullable=True)   # 用例结束执行时间
     duration_ms = Column(Integer, nullable=True) # 执行耗时
-    executed_at = Column(DateTime, default=datetime.utcnow)
+    executed_at = Column(DateTime, default=beijing_now)
     
     run = relationship("ExecutionRun", back_populates="results")
     test_case = relationship("TestCase")
@@ -134,7 +140,7 @@ class Config(Base):
     key = Column(String, unique=True, index=True, nullable=False)
     value = Column(Text, nullable=True)
     description = Column(String, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=beijing_now)
 
 class ScheduledTask(Base):
     """定时任务表"""
@@ -149,8 +155,8 @@ class ScheduledTask(Base):
     last_run_at = Column(DateTime, nullable=True)  # 上次运行时间
     next_run_at = Column(DateTime, nullable=True)  # 下次运行时间
     config = Column(JSON, nullable=True)  # 任务配置：如指定的agent_id、device_id等
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now)
 
     project = relationship("Project")
 
@@ -169,8 +175,8 @@ class TestPlan(Base):
     # 版本/迭代关联
     version = Column(String, nullable=True)
     iteration = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now)
 
     project = relationship("Project")
 
@@ -186,8 +192,8 @@ class TestCaseReview(Base):
     status = Column(String, default="pending")  # pending, approved, rejected, need_modification
     comments = Column(Text, nullable=True)
     # 数据
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now)
     
     project = relationship("Project", back_populates="reviews")
     test_case = relationship("TestCase", back_populates="reviews")
@@ -215,8 +221,8 @@ class Defect(Base):
     # 时间
     created_by = Column(String, ForeignKey("users.id"), nullable=True)
     assigned_to = Column(String, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now)
     
     project = relationship("Project", back_populates="defects")
     test_case = relationship("TestCase")
@@ -244,8 +250,8 @@ class ToolDefinition(Base):
     tags = Column(JSON, default=list)
     capabilities = Column(JSON, default=list)
     # 时间
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now)
 
 class ToolInstance(Base):
     """工具实例（特定环境的配置）"""
@@ -257,8 +263,8 @@ class ToolInstance(Base):
     agent_id = Column(String, nullable=True)  # 关联到特定Agent
     config = Column(JSON, nullable=True)
     status = Column(String, default="active")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now)
     
     tool_definition = relationship("ToolDefinition")
     project = relationship("Project")
@@ -275,8 +281,8 @@ class IntegrationConfig(Base):
     status = Column(String, default="active")
     # 字段映射配置
     field_mappings = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now)
     
     project = relationship("Project")
 
@@ -289,7 +295,7 @@ class ReportTemplate(Base):
     template_type = Column(String, default="execution")  # execution, daily, weekly, version, custom
     config = Column(JSON, nullable=True)  # 模板配置
     is_public = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
 
 class ReportRecord(Base):
     """报告记录"""
@@ -309,7 +315,7 @@ class ReportRecord(Base):
     # 时间
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     
     project = relationship("Project")
     template = relationship("ReportTemplate")
@@ -328,7 +334,7 @@ class VersionIteration(Base):
     # 时间
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     
     project = relationship("Project")
 
@@ -348,7 +354,7 @@ class CIReport(Base):
     pipeline_url = Column(String, nullable=True)        # 跳转 GitLab
     duration = Column(Integer, nullable=True)           # 秒
     coverage = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     jobs = relationship("CIReportJob", back_populates="report",
                         cascade="all, delete-orphan", order_by="CIReportJob.id")
 
@@ -387,7 +393,7 @@ class ReleaseArtifact(Base):
     file_sha256 = Column(String, nullable=True)
     storage_type = Column(String, default="gitlab_artifact")
     built_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     extra_data = Column(JSON, nullable=True)
 
 

@@ -414,3 +414,34 @@ gitlab/gitlab-ce      0.0.0.0:80->80/tcp ...   # 独立 Docker 网络，互不�
 | 清理旧分支 | `0 5 1 * *` | `SCHEDULE_TASK=cleanup` |
 
 > 时间按服务器时区解析：GitLab(Docker) 已设 `gitlab_rails['time_zone'] = 'Asia/Shanghai'`，故 cron 即北京时间。
+
+---
+
+## 2026-06-26 更新：报告幂等(retry 刷新) + 时间统一北京
+
+状态：✅ 已修复并部署。
+
+### 一、CI 报告按 `pipeline_iid` 幂等 upsert（修 retry 后状态不刷新）
+
+**现象**：deploy 失败 → 报告记「失败」；之后单独 retry 那个失败 job（成功了），但报告一直停在「失败」。
+
+**根因**：`report-notify` 在 `.post` 阶段以 `when:always` 跑，**只在流水线首次结束时跑一次**。单独 retry 某个 job **不会重跑 `.post`**（report-notify 自己已经「成功」地汇报过一次），所以报告不会更新。
+
+**修复**：`POST /api/ci-reports` 改为按 `pipeline_iid` **upsert**（pipeline_iid 在项目内唯一）。重跑 `report-notify` 会刷新同一条记录的整体状态与各 job 明细，而不是新增重复。
+
+**操作**：retry 失败 job 后，**再单独 retry `report-notify` 这个 job**，报告即刷新为成功并重发飞书通知。
+> GitLab `/pipelines/:id/jobs` 默认只返回每个 job 的**最新一次**（不含重试历史），所以重跑 report-notify 能拿到正确的最终状态。
+>
+> 零点击方案（待做）：加 GitLab Pipeline Webhook → 后端 upsert，流水线状态一变就自动回调刷新报告（代价：回调负载不含 job 日志）。
+
+### 二、所有时间统一存「北京时间」（修生成时间差 8 小时）
+
+**现象**：报告/制品的「生成时间」比实际早 8 小时（如显示 08:22，实际北京 16:22）。
+
+**根因**：后端 `datetime.utcnow()` 存的是朴素 UTC；前端 `new Date(无时区字符串)` 按**本地(北京)时间**解析，直接把 UTC 数值当北京显示 → 差 8 小时。而 GitLab(`time_zone=Asia/Shanghai`) 返回的是北京朴素时间，所以制品里 GitLab 来源的时间显示正确，自建的 `utcnow` 就错。
+
+**修复**：
+- `backend/app/models/domain.py` 新增 `beijing_now()`（= `datetime.utcnow() + 8h`），**所有** `created_at/updated_at` 默认值由 `datetime.utcnow` 改为 `beijing_now`。一次修好所有报告 tab 的「生成时间」。
+- CI 出包时间 `date -u`(UTC) → `date`(本地北京)，使 `package-build`/`package-release` 登记的构建时间也对齐。
+
+> 约定：**服务端生成的时间一律用 `beijing_now()`，不要再用 `datetime.utcnow`**。已入库的历史记录不回填，仅新记录生效。

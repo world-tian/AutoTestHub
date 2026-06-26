@@ -128,3 +128,10 @@ python -m app.seed
 python -m app.migrate_config
 ```
 
+## 持续集成 / 部署 / AI 上手
+
+- **AI / 开发者上手**：根目录 [`CLAUDE.md`](CLAUDE.md) 是项目上下文入口（架构、环境拓扑、CI/CD 模型、特有约定与坑、待办），接手前先读它。
+- **CI/CD 实操**：[`doc/14-GitLab-CICD搭建与配置.md`](doc/14-GitLab-CICD搭建与配置.md) —— 流水线、Runner、变量、门禁、定时构建、排查与历次修复。
+- **通用发布管理**：[`doc/15-持续集成与发布管理-通用搭建指南.md`](doc/15-持续集成与发布管理-通用搭建指南.md) —— 可复用到新仓库/新产品的 CI/CD + 制品 + 发布节奏指南。
+- **线上环境**：生产 `http://120.79.207.52:15173`（GitLab 服务器同机 Docker 部署）。
+

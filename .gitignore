@@ -30,3 +30,8 @@ env/
 # Uploads / runtime data
 backend/uploads/
 data/
+
+# 工具/会话中间产物（飞书文档提取、二维码等）
+doc_content*
+raw*.json
+_lark_qr*.png

@@ -2,11 +2,15 @@ version: '3.8'
 
 services:
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     volumes:
       - db-data:/app/data
+    # 制品代理下载要从容器内访问宿主机上的 GitLab(80端口)：把域名解析到宿主机网关，
+    # 绕开「容器访问本机公网IP的 hairpin NAT 不通」导致的连接超时。
+    extra_hosts:
+      - "gitlab.deeplore.cc:host-gateway"
     environment:
       - DATABASE_URL=sqlite:////app/data/autotesthub.db
       - FEISHU_APP_ID=${FEISHU_APP_ID}

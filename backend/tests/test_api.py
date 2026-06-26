@@ -74,6 +74,35 @@ def test_ci_report_create_and_detail(client):
     assert len(body["jobs"]) == 2
 
 
+def test_ci_report_upsert_by_pipeline_iid(client):
+    """同一 pipeline_iid 二次上报（如 retry 后重跑 report-notify）应更新同一条记录，
+    而不是新增重复，且整体状态/各 job 明细被刷新。"""
+    base = {"name": "UT 幂等", "branch": "feature/x", "pipeline_iid": 99001}
+
+    r = client.post("/api/ci-reports", json={
+        **base, "status": "failed",
+        "jobs": [{"name": "deploy-local", "stage": "deploy", "status": "failed"}],
+    })
+    assert r.status_code == 200
+    rid = r.json()["id"]
+
+    # retry 后重跑：同 pipeline_iid，状态翻成 success
+    r = client.post("/api/ci-reports", json={
+        **base, "status": "success",
+        "jobs": [{"name": "deploy-local", "stage": "deploy", "status": "success"}],
+    })
+    assert r.status_code == 200
+    assert r.json()["id"] == rid          # 同一条记录
+
+    matches = [x for x in client.get("/api/ci-reports").json() if x.get("pipeline_iid") == 99001]
+    assert len(matches) == 1              # 没有新增重复
+    assert matches[0]["status"] == "success"
+
+    det = client.get(f"/api/ci-reports/{rid}").json()
+    assert len(det["jobs"]) == 1
+    assert det["jobs"][0]["status"] == "success"
+
+
 def test_release_artifact_create_list_and_detail(client):
     payload = {
         "version": "1.2.0-pvt",

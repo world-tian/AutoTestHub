@@ -1226,9 +1226,20 @@ def create_report_record(record: ReportRecordCreate, db: Session = Depends(get_d
 # ============== 持续集成报告（CI Reports）==============
 @router.post("/ci-reports", response_model=CIReportResponse)
 def create_ci_report(payload: CIReportCreate, db: Session = Depends(get_db)):
-    rec = CIReport(**payload.model_dump(exclude={"jobs"}))
-    for j in payload.jobs:
-        rec.jobs.append(CIReportJob(**j.model_dump()))
+    data = payload.model_dump(exclude={"jobs"})
+    new_jobs = [CIReportJob(**j.model_dump()) for j in payload.jobs]
+    # 按 pipeline_iid 幂等 upsert：retry 失败 job 后重跑 report-notify，会刷新同一条记录的
+    # 整体状态与各 job 明细，而不是新增一条重复报告（pipeline_iid 在项目内唯一）。
+    rec = None
+    if payload.pipeline_iid is not None:
+        rec = db.query(CIReport).filter(CIReport.pipeline_iid == payload.pipeline_iid).first()
+    if rec:
+        for k, v in data.items():
+            setattr(rec, k, v)
+        rec.jobs = new_jobs            # cascade delete-orphan 自动清掉旧的 job 明细
+    else:
+        rec = CIReport(**data)
+        rec.jobs = new_jobs
     db.add(rec)
     db.commit()
     db.refresh(rec)

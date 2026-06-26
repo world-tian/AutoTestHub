@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""定时清理【按时间命名】的旧 release 分支（release/YYYY-MM-DD-HHMM）。
+"""定时清理【按时间命名】的旧 release 分支（release/YYYYMMDDHHMM，兼容旧的 release/YYYY-MM-DD-HHMM）。
 
 - 只删时间命名的周期分支；语义正式版本（release/1.2.0-pvt 等）一律保留。
 - 超过 KEEP_WEEKS（默认 8 周）的才删。
@@ -17,7 +17,9 @@ PID = os.environ["CI_PROJECT_ID"]
 TOKEN = os.environ["GIT_WRITE_TOKEN"]
 KEEP_WEEKS = int(os.environ.get("KEEP_WEEKS", "8"))
 
-DATE_BR = re.compile(r"^release/(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})$")
+# 时间命名的周期分支：release/rc202606261511（RC）、release/202606261511，
+# 兼容旧的带横杠 release/2026-06-26-1511（rc 前缀与横杠都可有可无）。语义正式版本（release/1.2.0-pvt）不匹配→保留。
+DATE_BR = re.compile(r"^release/(?:rc)?(\d{4})-?(\d{2})-?(\d{2})-?(\d{2})(\d{2})$")
 
 
 def api(method, path):

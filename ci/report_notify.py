@@ -148,7 +148,12 @@ def action_label():
         tgt = os.environ.get("CI_MERGE_REQUEST_TARGET_BRANCH_NAME", "")
         return f"MR 验证（待合入 {tgt}）" if tgt else "MR 验证（合入前门禁）"
     if SOURCE == "schedule":
-        return "定时任务"
+        return {
+            "cut": "定时任务 · 拉取 RC 发布分支",
+            "cleanup": "定时任务 · 清理旧 release 分支",
+            "dailybuild": "每日构建 · master 编译+本地部署测试+出包 db/",
+            "weeklybuild": "每周构建 · master 编译+本地部署测试+出包 wb/",
+        }.get(os.environ.get("SCHEDULE_TASK", ""), "定时任务")
     if BRANCH == "master":
         return "合入 master → 部署生产"
     if BRANCH.startswith("release/"):

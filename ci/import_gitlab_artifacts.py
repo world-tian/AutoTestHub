@@ -18,10 +18,12 @@ Optional:
 """
 import json
 import os
+import re
 import sys
 import urllib.parse
 import urllib.request
 import urllib.error
+from datetime import datetime, timedelta, timezone
 
 
 GL = os.environ.get("GITLAB_API_URL") or os.environ.get("CI_API_V4_URL") or "http://gitlab.deeplore.cc/api/v4"
@@ -48,6 +50,43 @@ def gitlab_headers():
     if not TOKEN:
         raise SystemExit("Missing GITLAB_API_TOKEN or GIT_WRITE_TOKEN")
     return {"PRIVATE-TOKEN": TOKEN}
+
+
+def _stamp(iso):
+    """GitLab 的 ISO8601(UTC) 时间 → YYYYMMDDHHMM(北京时间)，用于制品名，和分支时间戳风格一致。"""
+    if not iso:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return dt.astimezone(timezone(timedelta(hours=8))).strftime("%Y%m%d%H%M")
+    except Exception:
+        return ""
+
+
+_MR_REF = re.compile(r"^refs/merge-requests/(\d+)/head$")
+_MR_CACHE = {}
+
+
+def resolve_ref(ref):
+    """MR 流水线的 ref（refs/merge-requests/N/head）解析成实际要合入的源分支名（如 feature/xxx）；
+    其它 ref（master / release/* 等）原样返回。结果按 MR iid 缓存，避免重复请求。"""
+    if not ref:
+        return ref
+    m = _MR_REF.match(ref)
+    if not m:
+        return ref
+    iid = m.group(1)
+    if iid in _MR_CACHE:
+        return _MR_CACHE[iid]
+    src = ref
+    try:
+        mr = request_json("GET", f"{GL}/projects/{PROJECT_ENC}/merge_requests/{iid}",
+                          headers=gitlab_headers())
+        src = (mr or {}).get("source_branch") or ref
+    except Exception as exc:
+        print(f"WARN: 解析 MR {iid} 源分支失败，沿用 {ref}: {exc}")
+    _MR_CACHE[iid] = src
+    return src
 
 
 def list_gitlab_jobs():
@@ -82,7 +121,8 @@ def existing_artifact_keys():
 
 
 def artifact_payload(job):
-    ref = job.get("ref") or ""
+    # MR 流水线的 ref 是 refs/merge-requests/N/head，解析成实际要合入的源分支名
+    ref = resolve_ref(job.get("ref") or "")
     name = job.get("name") or ""
     status = job.get("status") or ""
     if status != "success":
@@ -98,17 +138,23 @@ def artifact_payload(job):
     pipeline_iid = pipeline.get("iid")
 
     if name == "package-release" and ref.startswith("release/"):
-        version = ref.removeprefix("release/")
-        package_name = f"autotesthub-{version}.tar.gz"
+        raw_version = ref.removeprefix("release/")          # 无斜杠，用于文件名
+        package_name = f"autotesthub-{raw_version}.tar.gz"
         package_path = f"dist-pkg/{package_name}"
         display_name = package_name
         file_name = package_path
         download_url = f"{job_url}/artifacts/file/{package_path}" if job_url else None
         source = "package-release"
+        # rc 周期版登记成 rc/<时间>（与 db/、wb/ 统一）；其它版本号原样
+        version = f"rc/{raw_version[2:]}" if re.match(r"^rc\d", raw_version) else raw_version
     else:
-        version = f"{ref or 'detached'}-{pipeline_iid or pipeline_id or job.get('id')}"
-        display_name = artifacts_file.get("filename") or f"{name}-artifacts.zip"
-        file_name = artifacts_file.get("filename") or display_name
+        # 版本号与分支对齐（如 master / release/202606261511），不再拼流水线号；
+        # 唯一性由 job_id 去重保证，同分支多次构建仍是各自独立的记录。
+        version = ref or "detached"
+        # 名称统一成 autotesthub-<job名>-<时间>.zip，与 db/rc 包风格对齐，一眼看出是哪个 job 何时产出
+        stamp = _stamp(job.get("finished_at") or job.get("created_at"))
+        display_name = f"autotesthub-{name}-{stamp}.zip" if stamp else f"autotesthub-{name}.zip"
+        file_name = display_name
         download_url = f"{job_url}/artifacts/download" if job_url else None
         source = "gitlab_job_artifact"
 

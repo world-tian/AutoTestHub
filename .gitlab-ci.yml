@@ -45,22 +45,26 @@ variables:
   tags: [windows]
 
 # ---------- 可复用触发规则 ----------
-.rules-scan: &rules-scan                  # MR / dev（master 合入后不重复扫描/单测）
+.rules-scan: &rules-scan                  # MR / dev / 每日·每周构建（master 合入后不重复扫描/单测）
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   - if: '$CI_COMMIT_BRANCH == "dev"'
+  - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK =~ /build$/'
 
-.rules-build: &rules-build                # MR / master / dev / release（master 排除定时触发）
+.rules-build: &rules-build                # MR / master / dev / release / 每日·每周构建（master 排除定时触发）
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE != "schedule"'
   - if: '$CI_COMMIT_BRANCH == "dev"'
   - if: '$CI_COMMIT_BRANCH =~ /^release/'
+  - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK =~ /build$/'
 
-.rules-local: &rules-local                # 仅 MR（本地部署+冒烟+清理，做合入前门禁）
+.rules-local: &rules-local                # MR / 每日·每周构建（本地一次性实例部署+冒烟+清理）
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK =~ /build$/'
 
-.rules-test: &rules-test                  # MR / release（autotestrunner；master 合入后不重复跑）
+.rules-test: &rules-test                  # MR / release / 每日·每周构建（autotestrunner；master 合入后不重复跑）
   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   - if: '$CI_COMMIT_BRANCH =~ /^release/'
+  - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK =~ /build$/'
 
 .rules-prod: &rules-prod                  # master（持续部署）+ release（版本发布）→ 生产
   - if: '$CI_COMMIT_BRANCH == "master"'
@@ -73,20 +77,24 @@ variables:
 
 # ============================================================
 # 0. 定时任务（GitLab Pipeline Schedules 触发，在 master 上跑）
-#    在 Settings→CI/CD→Pipeline schedules 建两个计划，分别设变量 SCHEDULE_TASK=cut / cleanup
+#    在 Settings→CI/CD→Pipeline schedules 建计划，用变量 SCHEDULE_TASK 区分：
+#      cut         周期性拉一条 RC 发布分支 release/rc<时间>（自动触发版本发布流水线，出包 autotesthub-rc<时间>.tar.gz）
+#      cleanup     清理 N 周前按时间命名的旧 release 分支（含 rc）
+#      dailybuild  每天从 master 跑：扫描→单测→编译→出包 db/<时间>→本地实例部署+冒烟+autotestrunner（不碰生产/预发布）
+#      weeklybuild 每周从 master 跑：同 dailybuild，出包 wb/<时间>
 #    需 CI 变量 GIT_WRITE_TOKEN（项目访问令牌：api + write_repository，maintainer）
 # ============================================================
-# 每周拉一条按时间命名的 release 分支 → 自动触发版本发布流水线
-cut-weekly-release:
+# 周期性拉一条 RC（发布候选）分支 release/rc<时间> → 自动触发版本发布流水线（出包 autotesthub-rc<时间>.tar.gz）
+cut-rc-release:
   stage: scan
   extends: [.linux-node]
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK == "cut"'
   script:
-    - 'BR="release/$(date +%Y-%m-%d-%H%M)"'
-    - echo "拉取本周 release 分支：$BR"
+    - 'BR="release/rc$(date +%Y%m%d%H%M)"'
+    - echo "拉取 RC 发布分支：$BR"
     - 'curl --fail -sS -X POST -H "PRIVATE-TOKEN: $GIT_WRITE_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/branches?branch=$BR&ref=master" >/dev/null'
-    - 'echo "✅ 已创建 $BR，将自动触发：编译→出包→部署预发布→测试→报告"'
+    - 'echo "✅ 已创建 $BR，将自动触发：编译→出包 autotesthub-rc...tar.gz→部署预发布→测试→报告"'
 
 # 清理 N 周前【按时间命名】的 release 分支（语义正式版本不动）
 cleanup-old-releases:
@@ -180,7 +188,7 @@ frontend-build:
 
 # ============================================================
 # 3b. 出包（仅 release/* 分支）：打出带版本号的发布包
-#     版本号 = 分支名去掉 release/ 前缀（按时间命名，如 release/2026-06-24-1430 → 2026-06-24-1430）
+#     版本号 = 分支名去掉 release/ 前缀（按时间命名，如 release/202606241430 → 202606241430）
 # ============================================================
 package-release:
   stage: package
@@ -190,10 +198,12 @@ package-release:
   dependencies: [frontend-build]      # 取已编译的 frontend/dist
   script:
     - 'export VERSION="${CI_COMMIT_REF_NAME#release/}"'
-    - 'echo "Packaging release $VERSION (commit $CI_COMMIT_SHORT_SHA, built $(date -u +%FT%TZ))"'
+    # 登记/展示用版本号：rc 周期版加斜杠 rc/<时间>（与 db/、wb/ 统一），文件名仍用无斜杠 VERSION
+    - 'case "$VERSION" in rc[0-9]*) export DISPLAY_VERSION="rc/${VERSION#rc}";; *) export DISPLAY_VERSION="$VERSION";; esac'
+    - 'echo "Packaging release $DISPLAY_VERSION → autotesthub-${VERSION}.tar.gz (commit $CI_COMMIT_SHORT_SHA)"'
     - mkdir -p dist-pkg
     - tar czf "dist-pkg/autotesthub-${VERSION}.tar.gz" --exclude='.git' --exclude='frontend/node_modules' --exclude='backend/venv' --exclude='dist-pkg' frontend/dist backend docker-compose.yml
-    - 'printf "version: %s\ncommit:  %s\nbuilt:   %s\n" "$VERSION" "$CI_COMMIT_SHA" "$(date -u +%FT%TZ)" > dist-pkg/VERSION.txt'
+    - 'printf "version: %s\ncommit:  %s\nbuilt:   %s\n" "$DISPLAY_VERSION" "$CI_COMMIT_SHA" "$(date -u +%FT%TZ)" > dist-pkg/VERSION.txt'
     - |
       export PKG="dist-pkg/autotesthub-${VERSION}.tar.gz"
       export BUILT_AT="$(date -u +%FT%TZ)"
@@ -206,7 +216,7 @@ package-release:
       import urllib.request
 
       payload = {
-          "version": os.environ["VERSION"],
+          "version": os.environ.get("DISPLAY_VERSION") or os.environ["VERSION"],
           "name": f"autotesthub-{os.environ['VERSION']}.tar.gz",
           "branch": os.environ.get("CI_COMMIT_REF_NAME"),
           "commit_sha": os.environ.get("CI_COMMIT_SHORT_SHA"),
@@ -237,6 +247,69 @@ package-release:
     name: "autotesthub-${CI_COMMIT_REF_SLUG}"
     paths: [dist-pkg/]
     expire_in: 3 months
+
+# ============================================================
+# 3c. 每日/每周构建出包（定时 dailybuild / weeklybuild）：从 master 最新代码打快照包
+#     dailybuild  → 版本 db/<时间>，包 autotesthub-db<时间>.tar.gz
+#     weeklybuild → 版本 wb/<时间>，包 autotesthub-wb<时间>.tar.gz
+# ============================================================
+package-build:
+  stage: package
+  extends: [.linux-node]
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK =~ /build$/'
+  dependencies: [frontend-build]      # 取已编译的 frontend/dist
+  script:
+    - 'case "$SCHEDULE_TASK" in dailybuild) TYPE=db;; weeklybuild) TYPE=wb;; *) TYPE=build;; esac'
+    - 'export STAMP="$(date +%Y%m%d%H%M)"'
+    - 'export VERSION="${TYPE}/${STAMP}"'
+    - 'export PKG="dist-pkg/autotesthub-${TYPE}${STAMP}.tar.gz"'
+    - 'echo "Packaging $SCHEDULE_TASK $VERSION (commit $CI_COMMIT_SHORT_SHA, built $(date -u +%FT%TZ))"'
+    - mkdir -p dist-pkg
+    - tar czf "$PKG" --exclude='.git' --exclude='frontend/node_modules' --exclude='backend/venv' --exclude='dist-pkg' frontend/dist backend docker-compose.yml
+    - 'printf "version: %s\ncommit:  %s\nbuilt:   %s\n" "$VERSION" "$CI_COMMIT_SHA" "$(date -u +%FT%TZ)" > dist-pkg/VERSION.txt'
+    - |
+      export BUILT_AT="$(date -u +%FT%TZ)"
+      export SIZE="$(wc -c < "$PKG" | tr -d " ")"
+      export SHA256="$(sha256sum "$PKG" | awk '{print $1}')"
+      export DOWNLOAD_URL="$CI_PROJECT_URL/-/jobs/$CI_JOB_ID/artifacts/file/$PKG"
+      python3 - <<'PY' || echo "WARN: artifact metadata upload failed (non-blocking)"
+      import json
+      import os
+      import urllib.request
+
+      payload = {
+          "version": os.environ["VERSION"],
+          "name": os.path.basename(os.environ["PKG"]),
+          "branch": os.environ.get("CI_COMMIT_REF_NAME"),
+          "commit_sha": os.environ.get("CI_COMMIT_SHORT_SHA"),
+          "pipeline_id": os.environ.get("CI_PIPELINE_ID"),
+          "pipeline_iid": int(os.environ["CI_PIPELINE_IID"]) if os.environ.get("CI_PIPELINE_IID", "").isdigit() else None,
+          "pipeline_url": os.environ.get("CI_PIPELINE_URL"),
+          "job_id": os.environ.get("CI_JOB_ID"),
+          "job_url": os.environ.get("CI_JOB_URL"),
+          "download_url": os.environ.get("DOWNLOAD_URL"),
+          "file_name": os.environ.get("PKG"),
+          "file_size": int(os.environ["SIZE"]) if os.environ.get("SIZE", "").isdigit() else None,
+          "file_sha256": os.environ.get("SHA256"),
+          "storage_type": "gitlab_artifact",
+          "built_at": os.environ.get("BUILT_AT"),
+          "extra_data": {"source": "package-build", "schedule_task": os.environ.get("SCHEDULE_TASK")},
+      }
+      req = urllib.request.Request(
+          os.environ.get("HUB_URL", "http://120.79.207.52:15173").rstrip("/") + "/api/artifacts",
+          data=json.dumps(payload).encode("utf-8"),
+          method="POST",
+          headers={"Content-Type": "application/json"},
+      )
+      with urllib.request.urlopen(req, timeout=15) as resp:
+          print("Artifact metadata uploaded:", resp.status)
+      PY
+    - ls -lh dist-pkg/
+  artifacts:
+    name: "autotesthub-${CI_COMMIT_SHORT_SHA}"
+    paths: [dist-pkg/]
+    expire_in: 1 month
 
 # ============================================================
 # 4. 部署
@@ -351,6 +424,8 @@ cleanup-local:
     <<: *ci-instance
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK =~ /build$/'
       when: always
   script:
     - docker compose down -v --remove-orphans || true

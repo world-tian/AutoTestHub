@@ -1296,6 +1296,64 @@ def get_artifact(artifact_id: str, db: Session = Depends(get_db)):
     return rec
 
 
+@router.get("/artifacts/{artifact_id}/download")
+def download_artifact(artifact_id: str, db: Session = Depends(get_db)):
+    """带 token 代理下载：私有项目的 GitLab job artifact 需要鉴权，直接给前端直链会跳转
+    GitLab 登录页。这里后端带 PRIVATE-TOKEN 从 GitLab 拉流，吐回浏览器直接下载。"""
+    import urllib.parse
+    import urllib.request
+    import urllib.error
+    from fastapi.responses import StreamingResponse
+
+    rec = db.query(ReleaseArtifact).filter(ReleaseArtifact.id == artifact_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    if not rec.job_id:
+        raise HTTPException(status_code=400, detail="该制品无 job_id，无法代理下载")
+    token = settings.GITLAB_API_TOKEN
+    if not token:
+        raise HTTPException(status_code=503, detail="后端未配置 GITLAB_API_TOKEN，无法代理下载")
+
+    gl = settings.GITLAB_API_URL.rstrip("/")
+    pid = urllib.parse.quote(str(settings.GITLAB_PROJECT), safe="")
+    source = rec.extra_data.get("source", "") if isinstance(rec.extra_data, dict) else ""
+    if rec.file_name and source in ("package-release", "package-build"):
+        # 单文件：/projects/:id/jobs/:job_id/artifacts/<制品在 archive 内的路径>
+        path = urllib.parse.quote(rec.file_name, safe="/")
+        url = f"{gl}/projects/{pid}/jobs/{rec.job_id}/artifacts/{path}"
+        filename = os.path.basename(rec.file_name)
+    else:
+        # 通用 job 产物：整包 archive zip
+        url = f"{gl}/projects/{pid}/jobs/{rec.job_id}/artifacts"
+        filename = rec.name or f"artifacts-{rec.job_id}.zip"
+
+    req = urllib.request.Request(url, headers={"PRIVATE-TOKEN": token})
+    try:
+        resp = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise HTTPException(status_code=410, detail="GitLab 上该制品已过期或不存在（artifact 已被清理）")
+        raise HTTPException(status_code=502, detail=f"从 GitLab 拉取制品失败: HTTP {e.code}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"从 GitLab 拉取制品失败: {e}")
+
+    def _stream(r, chunk=65536):
+        try:
+            while True:
+                buf = r.read(chunk)
+                if not buf:
+                    break
+                yield buf
+        finally:
+            r.close()
+
+    return StreamingResponse(
+        _stream(resp),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.delete("/artifacts/{artifact_id}")
 def delete_artifact(
     artifact_id: str,

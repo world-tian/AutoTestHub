@@ -12,6 +12,9 @@ services:
       - FEISHU_APP_ID=${FEISHU_APP_ID}
       - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
       - FEISHU_REDIRECT_URI=${FEISHU_REDIRECT_URI}
+      - GITLAB_API_URL=${GITLAB_API_URL:-http://gitlab.deeplore.cc/api/v4}
+      - GITLAB_API_TOKEN=${GITLAB_API_TOKEN:-}
+      - GITLAB_PROJECT=${GITLAB_PROJECT:-liutong/autotesthub}
     command: sh -c "python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     deploy:
       resources:

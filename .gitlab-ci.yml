@@ -358,7 +358,7 @@ deploy-to-server:
     - echo "Deploying [$ENV_NAME] -> $DEPLOY_HOST:$DEPLOY_PORT ($CI_COMMIT_REF_NAME)"
     - ssh $DEPLOY_USER@$DEPLOY_HOST "mkdir -p $DEPLOY_DIR"
     - rsync -avz --delete --exclude '.git/' --exclude 'frontend/node_modules/' --exclude 'backend/venv/' --exclude 'data/' ./ $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/
-    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd $DEPLOY_DIR && COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT FRONTEND_PORT=$DEPLOY_PORT docker compose down --remove-orphans; COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT FRONTEND_PORT=$DEPLOY_PORT docker compose up -d --build && COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT docker compose ps"
+    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd $DEPLOY_DIR && COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT FRONTEND_PORT=$DEPLOY_PORT docker compose down --remove-orphans; COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT FRONTEND_PORT=$DEPLOY_PORT GITLAB_API_TOKEN='$GITLAB_API_TOKEN' GITLAB_API_URL='$CI_API_V4_URL' GITLAB_PROJECT='$CI_PROJECT_PATH' docker compose up -d --build && COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT docker compose ps"
     - 'echo "Deployed [$ENV_NAME]: http://$DEPLOY_HOST:$DEPLOY_PORT"'
 
 # ============================================================

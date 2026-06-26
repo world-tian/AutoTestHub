@@ -178,7 +178,7 @@ export const Artifacts: React.FC = () => {
             render: (_, record) => (
                 <Space>
                     {record.download_url && (
-                        <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => window.open(record.download_url, '_blank')}>
+                        <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => window.open(`/api/artifacts/${record.id}/download`, '_blank')}>
                             下载
                         </Button>
                     )}
@@ -270,7 +270,7 @@ export const Artifacts: React.FC = () => {
                     <Space>
                         <Button onClick={() => setViewingArtifact(null)}>关闭</Button>
                         {viewingArtifact?.download_url && (
-                            <Button type="primary" icon={<DownloadOutlined />} onClick={() => window.open(viewingArtifact.download_url, '_blank')}>
+                            <Button type="primary" icon={<DownloadOutlined />} onClick={() => window.open(`/api/artifacts/${viewingArtifact.id}/download`, '_blank')}>
                                 下载制品
                             </Button>
                         )}

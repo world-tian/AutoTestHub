@@ -81,7 +81,7 @@ cd backend && python -m pytest tests -q --cov=app
 |------|------|-----------|
 | `doc/00`~`doc/13` | 产品/架构/数据库/模块/路线等设计文档 | — |
 | **`doc/14-GitLab-CICD搭建与配置`** | CI/CD 实操手册（操作/Runner/变量/门禁/定时/排查/历次修复） | [FpvtdU3uHoGlcuxKfQrcEVypnNc](https://wcnw79cymb81.feishu.cn/wiki/FpvtdU3uHoGlcuxKfQrcEVypnNc) |
-| **`doc/15-持续集成与发布管理-通用搭建指南`** | 可复用的通用 CI/CD + 发布管理指南 | [PJ0GwsrVuiL5mskOd9wcXBMlnKb](https://wcnw79cymb81.feishu.cn/wiki/PJ0GwsrVuiL5mskOd9wcXBMlnKb) |
+| **`doc/15-持续集成与发布管理-通用搭建指南`** | 可复用的通用 CI/CD + 发布管理指南 | [JmOJw1C4Rit4jCkkgWFcLbFgnMe](https://wcnw79cymb81.feishu.cn/wiki/JmOJw1C4Rit4jCkkgWFcLbFgnMe)（正本，含人工配图，更新用 block/str_replace 别 overwrite） |
 
 > doc/14、doc/15 改完用 lark-cli `docs +update --command overwrite` 同步飞书（见 doc/14 末尾或 lark-cli 用法）。
 

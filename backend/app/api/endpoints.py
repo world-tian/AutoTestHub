@@ -1316,6 +1316,19 @@ def download_artifact(artifact_id: str, db: Session = Depends(get_db)):
 
     gl = settings.GITLAB_API_URL.rstrip("/")
     pid = urllib.parse.quote(str(settings.GITLAB_PROJECT), safe="")
+    
+    # 智能解析项目路径：从 download_url 或 job_url 中提取真实的命名空间/项目名称 (例如 "andy/sdk_amba")
+    ref_url = rec.download_url or rec.job_url
+    if ref_url:
+        # 兼容格式如: http://gitlab.deeplore.cc/andy/sdk_amba/-/jobs/123...
+        parts = ref_url.split("/-/jobs/")
+        if len(parts) > 1:
+            proj_url_parts = parts[0].rstrip("/").split("/")
+            if len(proj_url_parts) >= 4:
+                # 提取域名/端口后的命名空间与项目名 (例: andy/sdk_amba)
+                proj_path = "/".join(proj_url_parts[3:])
+                pid = urllib.parse.quote(proj_path, safe="")
+
     source = rec.extra_data.get("source", "") if isinstance(rec.extra_data, dict) else ""
     if rec.file_name and source in ("package-release", "package-build"):
         # 单文件：/projects/:id/jobs/:job_id/artifacts/<制品在 archive 内的路径>

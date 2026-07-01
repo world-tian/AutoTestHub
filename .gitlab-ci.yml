@@ -132,6 +132,7 @@ typecheck-frontend:
   rules: *rules-scan
   allow_failure: true
   script:
+    - export PATH="/home/liutong/node/bin:$PATH"
     - cd frontend
     - npm install --no-audit --no-fund --legacy-peer-deps
     - npx --yes tsc --noEmit
@@ -179,6 +180,7 @@ frontend-build:
   rules: *rules-build
   before_script: *merge-target-sh
   script:
+    - export PATH="/home/liutong/node/bin:$PATH"
     - cd frontend
     - npm install --no-audit --no-fund --legacy-peer-deps
     - npm run build

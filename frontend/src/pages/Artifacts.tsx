@@ -149,6 +149,41 @@ export const Artifacts: React.FC = () => {
         setCustomRange(null);
     };
 
+    const handleDownload = async (record: ReleaseArtifact) => {
+        let nasUrl = '';
+        if (record.extra_data) {
+            try {
+                const extra = typeof record.extra_data === 'string'
+                    ? JSON.parse(record.extra_data)
+                    : record.extra_data;
+                if (extra && extra.nas_url) {
+                    nasUrl = extra.nas_url;
+                }
+            } catch (e) {}
+        }
+
+        if (nasUrl) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1000);
+            try {
+                // 探测局域网网盘的 Web Station 8081 端口连通性 (使用 no-cors 跨越跨域限制)
+                await fetch('http://192.168.110.26:8081/test_new_webdav.md', {
+                    mode: 'no-cors',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                console.log('LAN detected, downloading directly from NAS:', nasUrl);
+                window.open(nasUrl, '_blank');
+                return;
+            } catch (err) {
+                clearTimeout(timeoutId);
+                console.log('LAN probe failed or timeout, falling back to public server proxy');
+            }
+        }
+
+        window.open(`/api/artifacts/${record.id}/download`, '_blank');
+    };
+
     const artifactColumns: ColumnsType<ReleaseArtifact> = [
         {
             title: '版本',
@@ -178,7 +213,7 @@ export const Artifacts: React.FC = () => {
             render: (_, record) => (
                 <Space>
                     {record.download_url && (
-                        <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => window.open(`/api/artifacts/${record.id}/download`, '_blank')}>
+                        <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => handleDownload(record)}>
                             下载
                         </Button>
                     )}
@@ -270,7 +305,7 @@ export const Artifacts: React.FC = () => {
                     <Space>
                         <Button onClick={() => setViewingArtifact(null)}>关闭</Button>
                         {viewingArtifact?.download_url && (
-                            <Button type="primary" icon={<DownloadOutlined />} onClick={() => window.open(`/api/artifacts/${viewingArtifact.id}/download`, '_blank')}>
+                            <Button type="primary" icon={<DownloadOutlined />} onClick={() => handleDownload(viewingArtifact)}>
                                 下载制品
                             </Button>
                         )}

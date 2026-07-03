@@ -85,6 +85,7 @@ export const Artifacts: React.FC = () => {
     const [customRange, setCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
     const [viewingArtifact, setViewingArtifact] = useState<ReleaseArtifact | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [downloadingRecord, setDownloadingRecord] = useState<ReleaseArtifact | null>(null);
 
     const versionOptions = useMemo(() => (
         Array.from(new Set(allArtifacts.map((item) => item.version).filter(Boolean)))
@@ -162,7 +163,7 @@ export const Artifacts: React.FC = () => {
         return false;
     };
 
-    const handleDownload = async (record: ReleaseArtifact) => {
+    const handleDownload = (record: ReleaseArtifact) => {
         let nasUrl = '';
         if (record.extra_data) {
             try {
@@ -175,33 +176,11 @@ export const Artifacts: React.FC = () => {
             } catch (e) {}
         }
 
+        // 如果存在内网 NAS 直链，则弹出双通道选择
         if (nasUrl) {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 1000);
-            try {
-                // 探测局域网网盘的 Web Station 8081 端口连通性 (使用 no-cors 跨越跨域限制)
-                await fetch('http://192.168.110.26:8081/test_new_webdav.md', {
-                    mode: 'no-cors',
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-                console.log('LAN detected, downloading directly from NAS:', nasUrl);
-                window.open(nasUrl, '_blank');
-                return;
-            } catch (err) {
-                clearTimeout(timeoutId);
-                console.log('LAN probe failed or timeout, checking public fallback');
-                if (!record.download_url) {
-                    Modal.warning({
-                        title: '无法下载制品',
-                        content: '当前未连通公司局域网，且该固件大包未开启公网备份（UPLOAD_TO_GITLAB=0）。请连入局域网内下载！'
-                    });
-                    return;
-                }
-            }
-        }
-
-        if (record.download_url) {
+            setDownloadingRecord(record);
+        } else if (record.download_url) {
+            // 普通包直接走公网下载代理
             window.open(`/api/artifacts/${record.id}/download`, '_blank');
         }
     };
@@ -327,7 +306,7 @@ export const Artifacts: React.FC = () => {
                     <Space>
                         <Button onClick={() => setViewingArtifact(null)}>关闭</Button>
                         {viewingArtifact && hasDownload(viewingArtifact) && (
-                            <Button type="primary" icon={<DownloadOutlined />} onClick={() => handleDownload(viewingArtifact)}>
+                            <Button type="primary" icon={<DownloadOutlined />} onClick={() => { setViewingArtifact(null); handleDownload(viewingArtifact); }}>
                                 下载制品
                             </Button>
                         )}
@@ -372,6 +351,63 @@ export const Artifacts: React.FC = () => {
                         </Col>
                     </Row>
                 )}
+            </Modal>
+
+            <Modal
+                title="选择下载通道"
+                open={!!downloadingRecord}
+                onCancel={() => setDownloadingRecord(null)}
+                footer={null}
+                width={400}
+                centered
+            >
+                {downloadingRecord && (() => {
+                    let nasUrl = '';
+                    if (downloadingRecord.extra_data) {
+                        try {
+                            const extra = typeof downloadingRecord.extra_data === 'string'
+                                ? JSON.parse(downloadingRecord.extra_data)
+                                : downloadingRecord.extra_data;
+                            if (extra && extra.nas_url) {
+                                nasUrl = extra.nas_url;
+                            }
+                        } catch (e) {}
+                    }
+                    return (
+                        <div style={{ padding: '12px 0', textAlign: 'center' }}>
+                            <Text type="secondary" style={{ display: 'block', marginBottom: 20 }}>
+                                固件包: {downloadingRecord.name}
+                            </Text>
+                            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                                <Button
+                                    type="primary"
+                                    size="large"
+                                    icon={<DownloadOutlined />}
+                                    style={{ width: '100%', height: 48, background: '#52c41a', borderColor: '#52c41a' }}
+                                    onClick={() => {
+                                        window.open(nasUrl, '_blank');
+                                        setDownloadingRecord(null);
+                                    }}
+                                >
+                                    局域网极速下载 (Synology NAS)
+                                </Button>
+                                <Button
+                                    type="default"
+                                    size="large"
+                                    icon={<DownloadOutlined />}
+                                    style={{ width: '100%', height: 48 }}
+                                    disabled={!downloadingRecord.download_url}
+                                    onClick={() => {
+                                        window.open(`/api/artifacts/${downloadingRecord.id}/download`, '_blank');
+                                        setDownloadingRecord(null);
+                                    }}
+                                >
+                                    {downloadingRecord.download_url ? '公网备份下载' : '公网备份下载 (该固件未开启公网备份)'}
+                                </Button>
+                            </Space>
+                        </div>
+                    );
+                })()}
             </Modal>
         </div>
     );

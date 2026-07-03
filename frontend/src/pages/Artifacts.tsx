@@ -149,6 +149,19 @@ export const Artifacts: React.FC = () => {
         setCustomRange(null);
     };
 
+    const hasDownload = (record: ReleaseArtifact) => {
+        if (record.download_url) return true;
+        if (record.extra_data) {
+            try {
+                const extra = typeof record.extra_data === 'string'
+                    ? JSON.parse(record.extra_data)
+                    : record.extra_data;
+                if (extra && extra.nas_url) return true;
+            } catch (e) {}
+        }
+        return false;
+    };
+
     const handleDownload = async (record: ReleaseArtifact) => {
         let nasUrl = '';
         if (record.extra_data) {
@@ -177,11 +190,20 @@ export const Artifacts: React.FC = () => {
                 return;
             } catch (err) {
                 clearTimeout(timeoutId);
-                console.log('LAN probe failed or timeout, falling back to public server proxy');
+                console.log('LAN probe failed or timeout, checking public fallback');
+                if (!record.download_url) {
+                    Modal.warning({
+                        title: '无法下载制品',
+                        content: '当前未连通公司局域网，且该固件大包未开启公网备份（UPLOAD_TO_GITLAB=0）。请连入局域网内下载！'
+                    });
+                    return;
+                }
             }
         }
 
-        window.open(`/api/artifacts/${record.id}/download`, '_blank');
+        if (record.download_url) {
+            window.open(`/api/artifacts/${record.id}/download`, '_blank');
+        }
     };
 
     const artifactColumns: ColumnsType<ReleaseArtifact> = [
@@ -212,7 +234,7 @@ export const Artifacts: React.FC = () => {
             key: 'actions',
             render: (_, record) => (
                 <Space>
-                    {record.download_url && (
+                    {hasDownload(record) && (
                         <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => handleDownload(record)}>
                             下载
                         </Button>
@@ -304,7 +326,7 @@ export const Artifacts: React.FC = () => {
                 footer={(
                     <Space>
                         <Button onClick={() => setViewingArtifact(null)}>关闭</Button>
-                        {viewingArtifact?.download_url && (
+                        {viewingArtifact && hasDownload(viewingArtifact) && (
                             <Button type="primary" icon={<DownloadOutlined />} onClick={() => handleDownload(viewingArtifact)}>
                                 下载制品
                             </Button>

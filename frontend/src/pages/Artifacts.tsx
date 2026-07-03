@@ -171,7 +171,7 @@ export const Artifacts: React.FC = () => {
                     ? JSON.parse(record.extra_data)
                     : record.extra_data;
                 if (extra && extra.nas_url) {
-                    nasUrl = extra.nas_url;
+                    nasUrl = extra.nas_url.replace('/firmware/', '/');
                 }
             } catch (e) {}
         }
@@ -369,7 +369,7 @@ export const Artifacts: React.FC = () => {
                                 ? JSON.parse(downloadingRecord.extra_data)
                                 : downloadingRecord.extra_data;
                             if (extra && extra.nas_url) {
-                                nasUrl = extra.nas_url;
+                                nasUrl = extra.nas_url.replace('/firmware/', '/');
                             }
                         } catch (e) {}
                     }

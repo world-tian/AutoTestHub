@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Spin, Card, message } from 'antd';
 import { api } from '../api';
@@ -6,6 +6,7 @@ import { api } from '../api';
 export const FeishuCallback: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const authenticationStarted = useRef(false);
 
   useEffect(() => {
     const code = searchParams.get('code');
@@ -14,6 +15,11 @@ export const FeishuCallback: React.FC = () => {
       navigate('/login');
       return;
     }
+
+    if (authenticationStarted.current) {
+      return;
+    }
+    authenticationStarted.current = true;
 
     const authenticate = async () => {
       try {

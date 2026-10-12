@@ -51,6 +51,29 @@ def test_project_get_404(client):
     assert r.status_code == 404
 
 
+def test_execution_result_returns_artifacts(client):
+    project = client.post("/api/projects", json={"name": "执行结果明细项目"}).json()
+    case = client.post(f"/api/projects/{project['id']}/test-cases", json={
+        "title": "CAM-SHP-010",
+        "case_category": "automated",
+        "priority": "P1",
+        "steps": ["执行"],
+        "expected_result": "保存 MTF 证据",
+    }).json()
+    run = client.post(f"/api/projects/{project['id']}/execution-runs", json={"name": "MTF 明细"}).json()
+    artifact = {"evidence": {"case_id": "CAM-SHP-010", "mtf50_cy_px": 0.25}}
+    result = client.post(f"/api/execution-runs/{run['id']}/results", json={
+        "test_case_id": case["id"],
+        "status": "passed",
+        "duration_ms": 144,
+        "artifacts": artifact,
+    })
+    assert result.status_code == 200
+    rows = client.get(f"/api/execution-runs/{run['id']}/results").json()
+    assert rows[0]["artifacts"] == artifact
+    assert rows[0]["duration_ms"] == 144
+
+
 def test_ci_report_create_and_detail(client):
     payload = {
         "name": "UT CI 报告",

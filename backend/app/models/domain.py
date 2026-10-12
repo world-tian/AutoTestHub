@@ -75,6 +75,10 @@ class TestCase(Base):
     project_id = Column(String, ForeignKey("projects.id"))
     requirement_id = Column(String, ForeignKey("requirements.id"), nullable=True)
     local_case_id = Column(String, nullable=True, index=True)
+    description = Column(Text, nullable=True)
+    test_class = Column(String, nullable=True)
+    preconditions = Column(Text, nullable=True)
+    script_path = Column(String, nullable=True)
     title = Column(String)
     feature = Column(String, nullable=True)
     case_category = Column(String) # manual, automated

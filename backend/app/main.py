@@ -5,8 +5,14 @@ import os
 from app.api.endpoints import router as api_router
 from app.api.device import router as device_router
 from app.api.extended import router as extended_router
+from app.api.ble import router as ble_router
 
 app = FastAPI(title="AutoTestHub Cloud Testing API")
+
+@app.on_event("startup")
+def migrate_case_metadata():
+    from app.migrate_camera_metadata import migrate
+    migrate()
 
 # Ensure uploads directory exists
 os.makedirs("uploads", exist_ok=True)
@@ -23,6 +29,7 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api")
 app.include_router(device_router, prefix="/api")
 app.include_router(extended_router, prefix="/api")
+app.include_router(ble_router, prefix="/api")
 
 @app.get("/")
 def root():

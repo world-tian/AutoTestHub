@@ -436,6 +436,10 @@ def sync_test_cases(sync_data: SyncTestCasesRequest, db: Session = Depends(get_d
             existing_case.steps = tc_item.steps
             existing_case.expected_result = tc_item.expected_result
             existing_case.case_category = tc_item.case_category
+            # 兼容旧客户端：没有发送的新增字段不能擦除已有描述/分类。
+            for field in ("feature", "description", "test_class", "preconditions", "script_path"):
+                if field in tc_item.model_fields_set:
+                    setattr(existing_case, field, getattr(tc_item, field))
             if tc_item.req_id:
                 existing_case.requirement_id = tc_item.req_id
             updated_count += 1
@@ -443,6 +447,11 @@ def sync_test_cases(sync_data: SyncTestCasesRequest, db: Session = Depends(get_d
             new_case = TestCase(
                 project_id=sync_data.project_id,
                 local_case_id=tc_item.local_case_id,
+                feature=tc_item.feature,
+                description=tc_item.description,
+                test_class=tc_item.test_class,
+                preconditions=tc_item.preconditions,
+                script_path=tc_item.script_path,
                 requirement_id=tc_item.req_id,
                 title=tc_item.title,
                 priority=tc_item.priority,
@@ -496,6 +505,16 @@ def update_run_status(run_id: str, status: str, db: Session = Depends(get_db)):
     run.status = status
     db.commit()
     return {"status": status}
+
+@router.patch("/execution-runs/{run_id}/project")
+def update_run_project(run_id: str, project_id: str, db: Session = Depends(get_db)):
+    run = db.query(ExecutionRun).filter(ExecutionRun.id == run_id).first()
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not run or not project:
+        raise HTTPException(status_code=404, detail="Execution run or project not found")
+    run.project_id = project_id
+    db.commit()
+    return {"project_id": project_id}
 
 @router.delete("/execution-runs/{run_id}")
 def delete_run(run_id: str, db: Session = Depends(get_db)):
@@ -568,6 +587,10 @@ def get_run_results(run_id: str, db: Session = Depends(get_db)):
             "error_message": r.error_message,
             "log_url": r.log_url,
             "html_report": r.html_report,
+            "artifacts": r.artifacts,
+            "start_time": r.start_time,
+            "end_time": r.end_time,
+            "duration_ms": r.duration_ms,
             "executed_at": r.executed_at,
             "case_title": case_info["title"],
             "case_description": case_info["description"]
@@ -1255,6 +1278,15 @@ def get_ci_report(report_id: str, db: Session = Depends(get_db)):
     if not rec:
         raise HTTPException(status_code=404, detail="CI report not found")
     return rec
+
+@router.delete("/ci-reports/{report_id}")
+def delete_ci_report(report_id: str, db: Session = Depends(get_db)):
+    rec = db.query(CIReport).filter(CIReport.id == report_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="CI report not found")
+    db.delete(rec)
+    db.commit()
+    return {"message": "CI report deleted"}
 
 # ============== 版本/迭代 ==============
 # ============== Release artifacts ==============

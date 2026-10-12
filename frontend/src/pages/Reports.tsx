@@ -157,7 +157,7 @@ export const Reports: React.FC = () => {
             key: 'projectName',
             render: (_, record) => (
                 <Button type="link" onClick={() => navigate(`/projects/${record.project_id}`)} style={{ padding: 0 }}>
-                    {projectsMap[record.project_id] || record.project_id}
+                    {projectsMap[record.project_id] || '未关联项目'}
                 </Button>
             )
         },

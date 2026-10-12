@@ -42,6 +42,10 @@ export interface Requirement {
 }
 
 export interface TestCase {
+    description?: string;
+    test_class?: string;
+    preconditions?: string;
+    script_path?: string;
     id: string;
     project_id: string;
     requirement_id?: string;
@@ -72,6 +76,10 @@ export interface ExecutionResult {
     error_message?: string;
     log_url?: string;
     html_report?: string;
+    artifacts?: Record<string, unknown>;
+    start_time?: string;
+    end_time?: string;
+    duration_ms?: number;
     executed_at: string;
 }
 
@@ -882,5 +890,91 @@ export const updateVersionIteration = async (iterationId: string, data: any) => 
 
 export const getVersionIteration = async (iterationId: string) => {
     const response = await api.get<VersionIteration>(`/version-iterations/${iterationId}`);
+    return response.data;
+};
+
+// 蓝牙工具 API
+export interface BleDeviceState {
+    address: string;
+    name: string;
+    alias?: string | null;
+    rssi: number;
+    is_connected: boolean;
+    is_connecting: boolean;
+    last_seen_at?: string;
+    last_error?: string;
+}
+
+export interface BleMessageState {
+    timestamp: string;
+    address: string;
+    direction: 'tx' | 'rx' | 'sys';
+    message: string;
+}
+
+export interface BleState {
+    scanning: boolean;
+    last_scan_at?: string;
+    devices: BleDeviceState[];
+    messages: BleMessageState[];
+    connected_addresses: string[];
+}
+
+export const getBleState = async () => {
+    const response = await api.get<BleState>('/ble/state');
+    return response.data;
+};
+
+export const scanBleDevices = async (params: { seconds?: number; query?: string }) => {
+    const response = await api.post<BleDeviceState[]>('/ble/scan', {
+        seconds: params.seconds ?? 6,
+        query: params.query || undefined,
+    });
+    return response.data;
+};
+
+export const connectBleDevice = async (address: string) => {
+    const response = await api.post<BleDeviceState>('/ble/connect', { address });
+    return response.data;
+};
+
+export const disconnectBleDevice = async (address: string) => {
+    const response = await api.post<BleDeviceState>('/ble/disconnect', { address });
+    return response.data;
+};
+
+export const disconnectAllBleDevices = async () => {
+    const response = await api.post<{ message: string }>('/ble/disconnect-all');
+    return response.data;
+};
+
+export const sendBleMessage = async (payload: {
+    address?: string;
+    message: string;
+    append_newline?: boolean;
+    broadcast?: boolean;
+}) => {
+    const response = await api.post('/ble/send', {
+        address: payload.address,
+        message: payload.message,
+        append_newline: payload.append_newline ?? true,
+        broadcast: payload.broadcast ?? false,
+    });
+    return response.data;
+};
+
+export const renameBleDevice = async (payload: {
+    address: string;
+    name: string;
+    characteristic_uuid?: string;
+}) => {
+    const response = await api.post<BleDeviceState>('/ble/rename', payload);
+    return response.data;
+};
+
+export const getBleMessages = async (limit?: number) => {
+    const response = await api.get<BleMessageState[]>('/ble/messages', {
+        params: limit ? { limit } : undefined,
+    });
     return response.data;
 };

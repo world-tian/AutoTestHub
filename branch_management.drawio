@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="GitLab-CICD 分支管理规范">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="650">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- 背景标题 -->
+        <mxCell id="title" value="GitLab-CICD 分支管理与环境部署规范" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="20" width="300" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- 分支轴线 (横线) -->
+        <!-- Feature 分支轴 -->
+        <mxCell id="axis_feature" value="" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#D6B656;endFill=0;dashed=1;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="100" y="120" as="sourcePoint" />
+            <mxPoint x="900" y="120" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl_feature" value="&lt;b&gt;feature/*&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;(短期开发分支)&lt;/font&gt;" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#B58A00;" vertex="1" parent="1">
+          <mxGeometry x="10" y="100" width="80" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Master 分支轴 -->
+        <mxCell id="axis_master" value="" style="endArrow=none;html=1;strokeWidth=4;strokeColor=#6C8EBF;endFill=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="100" y="260" as="sourcePoint" />
+            <mxPoint x="980" y="260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl_master" value="&lt;b&gt;master&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;(主干持续集成)&lt;/font&gt;" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#2B579A;" vertex="1" parent="1">
+          <mxGeometry x="10" y="240" width="80" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Release 分支轴 -->
+        <mxCell id="axis_release" value="" style="endArrow=none;html=1;strokeWidth=3;strokeColor=#82B366;endFill=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="100" y="400" as="sourcePoint" />
+            <mxPoint x="900" y="400" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl_release" value="&lt;b&gt;release/*&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;(版本发布分支)&lt;/font&gt;" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#3B7A1A;" vertex="1" parent="1">
+          <mxGeometry x="10" y="380" width="80" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Hotfix 分支轴 -->
+        <mxCell id="axis_hotfix" value="" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#B85450;endFill=0;dashed=1;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="100" y="540" as="sourcePoint" />
+            <mxPoint x="900" y="540" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl_hotfix" value="&lt;b&gt;hotfix/*&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;(紧急修复分支)&lt;/font&gt;" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#B85450;" vertex="1" parent="1">
+          <mxGeometry x="10" y="520" width="80" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- 提交圈圈与流程节点 (避免重叠，合理规划 X 轴坐标) -->
+        <!-- Feature 轴上节点 -->
+        <mxCell id="node_f_start" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFF2CC;strokeColor=#D6B656;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="180" y="112" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_f_start" value="从 master 切出" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#B58A00;" vertex="1" parent="1">
+          <mxGeometry x="148" y="90" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="node_f_commit" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFF2CC;strokeColor=#D6B656;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="280" y="112" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_f_commit" value="日常开发 Commit" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#B58A00;" vertex="1" parent="1">
+          <mxGeometry x="243" y="90" width="90" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="node_f_mr" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFF2CC;strokeColor=#D6B656;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="380" y="112" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_f_mr" value="发起 MR 门禁" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#B58A00;" vertex="1" parent="1">
+          <mxGeometry x="348" y="90" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Master 轴上节点 -->
+        <mxCell id="node_m_base" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#DAE8FC;strokeColor=#6C8EBF;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="120" y="252" width="16" height="16" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="node_m_merge" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#DAE8FC;strokeColor=#6C8EBF;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="460" y="252" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_m_merge" value="MR 合入 master" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#2B579A;" vertex="1" parent="1">
+          <mxGeometry x="423" y="230" width="90" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="node_m_cut" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#DAE8FC;strokeColor=#6C8EBF;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="640" y="252" width="16" height="16" as="geometry" />
+        </mxCell>
+
+        <mxCell id="node_m_cherry" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#DAE8FC;strokeColor=#6C8EBF;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="920" y="252" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_m_cherry" value="Cherry-pick 合入" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#2B579A;" vertex="1" parent="1">
+          <mxGeometry x="888" y="230" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Release 轴上节点 -->
+        <mxCell id="node_r_cut" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#D5E8D4;strokeColor=#82B366;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="640" y="392" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_r_cut" value="拉 release 分支" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#3B7A1A;" vertex="1" parent="1">
+          <mxGeometry x="608" y="370" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="node_r_test" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#D5E8D4;strokeColor=#82B366;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="760" y="392" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_r_test" value="预发布测试/出包" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#3B7A1A;" vertex="1" parent="1">
+          <mxGeometry x="723" y="370" width="90" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="node_r_ga" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#D5E8D4;strokeColor=#82B366;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="880" y="392" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_r_ga" value="GA 量产 Tag" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#3B7A1A;" vertex="1" parent="1">
+          <mxGeometry x="848" y="370" width="80" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- Hotfix 轴上节点 -->
+        <mxCell id="node_h_start" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#F8CECC;strokeColor=#B85450;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="640" y="532" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_h_start" value="从 release 拉出" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#B85450;" vertex="1" parent="1">
+          <mxGeometry x="608" y="510" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="node_h_fix" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#F8CECC;strokeColor=#B85450;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="760" y="532" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_h_fix" value="热修复 Commit" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#B85450;" vertex="1" parent="1">
+          <mxGeometry x="728" y="510" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- 分支流动折线连接 (以直观折线代表分支分叉与合并) -->
+        <!-- master -> feature -->
+        <mxCell id="conn_m_to_f" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=1.5;strokeColor=#D6B656;" edge="1" parent="1" source="node_m_base" target="node_f_start">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- feature -> master (MR merge) -->
+        <mxCell id="conn_f_to_m" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=1.5;strokeColor=#6C8EBF;" edge="1" parent="1" source="node_f_mr" target="node_m_merge">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- master -> release -->
+        <mxCell id="conn_m_to_r" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=1.5;strokeColor=#82B366;" edge="1" parent="1" source="node_m_cut" target="node_r_cut">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- release -> hotfix -->
+        <mxCell id="conn_r_to_h" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=1.5;strokeColor=#B85450;" edge="1" parent="1" source="node_r_cut" target="node_h_start">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- hotfix -> release (合并) -->
+        <mxCell id="conn_h_to_r" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=1.5;strokeColor=#82B366;" edge="1" parent="1" source="node_h_fix" target="node_r_test">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- hotfix -> master (Cherry-pick 合回 master 避免漏修复) -->
+        <mxCell id="conn_h_to_m" value="Cherry-pick" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=1.5;strokeColor=#6C8EBF;labelBackgroundColor=#FFFFFF;fontSize=10;" edge="1" parent="1" source="node_h_fix" target="node_m_cherry">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="928" y="540" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- CI/CD 流水线与隔离环境说明卡片 (摆放于空白位置，不重合) -->
+        
+        <!-- MR 门禁卡片 -->
+        <mxCell id="card_mr" value="&lt;b&gt;MR 门禁流水线&lt;/b&gt;&lt;br&gt;• 代码扫描 (Bandit &amp;amp; tsc)&lt;br&gt;• 单元测试 (Pytest + Cov)&lt;br&gt;• 编译 &amp;amp; 容器化部署测试&lt;br&gt;&lt;font color=&quot;#B58A00&quot;&gt;[验证通过 + 审批合入]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="210" y="150" width="160" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Master 部署卡片 -->
+        <mxCell id="card_master" value="&lt;b&gt;Master 持续部署&lt;/b&gt;&lt;br&gt;• 自动构建前端与后端服务&lt;br&gt;• 编译打包发布至生产集群&lt;br&gt;• 部署后自动跑冒烟测试&lt;br&gt;&lt;font color=&quot;#2B579A&quot;&gt;[合入 master 自动上线]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="410" y="290" width="160" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Release 发布卡片 -->
+        <mxCell id="card_release" value="&lt;b&gt;Release 发布与验证&lt;/b&gt;&lt;br&gt;• 编译出版本包 (.tar.gz 制品)&lt;br&gt;• 部署至预发布服务器验证&lt;br&gt;• 跑全量自动化测试并出报告&lt;br&gt;&lt;font color=&quot;#3B7A1A&quot;&gt;[输出制品 + 出包确认]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="700" y="290" width="160" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- 飞书通知说明框 -->
+        <mxCell id="card_notify" value="&lt;b&gt;CI/CD 统一通知与质量上报&lt;/b&gt;&lt;br&gt;• 状态及覆盖率一键上传云端&lt;br&gt;• 自动给提交人发送飞书私信" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#CCCCCC;fontSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="290" width="160" height="80" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

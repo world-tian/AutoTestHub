@@ -24,6 +24,7 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingCase, setEditingCase] = useState<TestCase | null>(null);
+  const [viewingCase, setViewingCase] = useState<TestCase | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'tree'>('table');
   const [generateMode, setGenerateMode] = useState<'req' | 'text'>('req');
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
@@ -225,6 +226,12 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
 
   const columns: any[] = [
     {
+      title: '测试大类', dataIndex: 'test_class', key: 'test_class',
+      filters: Array.from(new Set(testCases.map(c => c.test_class).filter(Boolean))).map(c => ({ text: c, value: c })),
+      onFilter: (value: any, record: TestCase) => record.test_class === value,
+      render: (text: string) => text || '-',
+    },
+    {
       title: '用例标题',
       dataIndex: 'title',
       key: 'title',
@@ -233,10 +240,10 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
     },
     {
       title: '用例说明',
-      dataIndex: 'expected_result',
-      key: 'expected_result',
+      dataIndex: 'description',
+      key: 'description',
       ellipsis: true,
-      render: (text: string) => text || '-',
+      render: (text: string, record: TestCase) => <Tooltip title={text || record.expected_result}>{text || record.expected_result || '-'}</Tooltip>,
     },
     {
       title: '关联需求',
@@ -311,7 +318,7 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
       render: (_: any, record: TestCase) => (
         <Space size="small">
           <Tooltip title="查看详情">
-            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleOpenEditModal(record)} />
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setViewingCase(record)} />
           </Tooltip>
           <Tooltip title="编辑">
             <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleOpenEditModal(record)} />
@@ -354,22 +361,28 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
     const featureMap = new Map<string, any>();
     
     testCases.forEach(tc => {
+      if (featureFilter && tc.feature !== featureFilter && !tc.feature?.startsWith(`${featureFilter}/`)) return;
       let groupName = tc.feature || '未分类功能';
       if (tc.requirement_id) {
         const req = requirements.find(r => r.id === tc.requirement_id);
         if (req) groupName = `需求: ${req.title}`;
       }
       
-      if (!featureMap.has(groupName)) {
-        featureMap.set(groupName, {
-          title: groupName,
-          key: `group-${groupName}`,
-          children: []
-        });
-        tree.push(featureMap.get(groupName));
-      }
-      
-      const groupNode = featureMap.get(groupName);
+      // camera/awb 等路径按目录逐级展示；普通功能名称仍是单层节点。
+      const parts = tc.feature?.startsWith('camera/') ? tc.feature.split('/') : [groupName];
+      let siblings = tree;
+      let groupNode: any;
+      let path = '';
+      parts.forEach(part => {
+        path = path ? `${path}/${part}` : part;
+        if (!featureMap.has(path)) {
+          const node = { title: part === 'camera' ? '相机 / camera' : part, key: `group-${path}`, children: [] };
+          featureMap.set(path, node);
+          siblings.push(node);
+        }
+        groupNode = featureMap.get(path);
+        siblings = groupNode.children;
+      });
       
       // 子节点按自动化/手工分类
       let catNode = groupNode.children.find((c: any) => c.title === (tc.case_category === 'automated' ? '自动化用例' : '手工用例'));
@@ -388,7 +401,7 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
             <span>{tc.title}</span>
             {getPriorityTag(tc.priority)}
             {getStatusTag(tc.status)}
-            {tc.expected_result && <span style={{ color: '#888', fontSize: '12px', marginLeft: '8px' }}>- {tc.expected_result}</span>}
+            {(tc.description || tc.expected_result) && <span style={{ color: '#888', fontSize: '12px', marginLeft: '8px' }}>- {tc.description || tc.expected_result}</span>}
           </Space>
         ),
         key: tc.id,
@@ -398,7 +411,7 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
     });
     
     return tree;
-  }, [testCases, requirements]);
+  }, [testCases, requirements, featureFilter]);
 
   const stats = useMemo(() => {
     const total = testCases.length;
@@ -410,7 +423,7 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
 
   const filteredTestCases = useMemo(() => {
     if (!featureFilter) return testCases;
-    return testCases.filter(c => c.feature === featureFilter);
+    return testCases.filter(c => c.feature === featureFilter || c.feature?.startsWith(`${featureFilter}/`));
   }, [testCases, featureFilter]);
 
   return (
@@ -526,6 +539,7 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
               {uniqueFeatures.map(f => (
                 <Select.Option key={f} value={f}>{f}</Select.Option>
               ))}
+              {uniqueFeatures.some(f => f?.startsWith('camera/')) && <Select.Option value="camera">相机 / camera（全部大类）</Select.Option>}
             </Select>
           </div>
 
@@ -571,7 +585,7 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
                         titleRender={(nodeData: any) => {
                           if (nodeData.isLeaf) {
                             return (
-                              <div onClick={() => handleOpenEditModal(nodeData.record)} style={{ cursor: 'pointer' }}>
+                              <div onClick={() => setViewingCase(nodeData.record)} style={{ cursor: 'pointer' }}>
                                 {nodeData.title}
                               </div>
                             );
@@ -589,6 +603,18 @@ export const TestCaseManagement: React.FC<{ embeddedProjectId?: string }> = ({ e
           />
         </>
       )}
+
+      <Modal title={viewingCase?.title} open={!!viewingCase} onCancel={() => setViewingCase(null)} footer={null} width={800}>
+        <p><strong>测试大类：</strong>{viewingCase?.test_class || '-'}</p>
+        <p><strong>功能模块：</strong>{viewingCase?.feature || '-'}</p>
+        <p><strong>用例编号：</strong>{viewingCase?.local_case_id || '-'}</p>
+        <p><strong>用例描述：</strong>{viewingCase?.description || viewingCase?.expected_result}</p>
+        <p><strong>前置条件：</strong>{viewingCase?.preconditions || '-'}</p>
+        <p><strong>本地脚本：</strong><Typography.Text copyable>{viewingCase?.script_path || '-'}</Typography.Text></p>
+        <strong>测试步骤</strong>
+        <ol>{viewingCase?.steps?.map((step, index) => <li key={index}>{step}</li>)}</ol>
+        <p><strong>预期结果：</strong>{viewingCase?.expected_result}</p>
+      </Modal>
 
       <Modal
         title="新建测试用例"

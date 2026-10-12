@@ -61,6 +61,10 @@ class RequirementResponse(RequirementBase):
         from_attributes = True
 
 class TestCaseBase(BaseModel):
+    description: Optional[str] = None
+    test_class: Optional[str] = None
+    preconditions: Optional[str] = None
+    script_path: Optional[str] = None
     title: str
     case_category: str
     priority: str
@@ -80,6 +84,10 @@ class TestCaseCreate(TestCaseBase):
     status: str = "candidate"
 
 class TestCaseUpdate(BaseModel):
+    description: Optional[str] = None
+    test_class: Optional[str] = None
+    preconditions: Optional[str] = None
+    script_path: Optional[str] = None
     title: Optional[str] = None
     case_category: Optional[str] = None
     priority: Optional[str] = None
@@ -147,6 +155,11 @@ class ExecutionResultResponse(ExecutionResultBase):
         from_attributes = True
 
 class SyncTestCaseItem(BaseModel):
+    feature: Optional[str] = None
+    description: Optional[str] = None
+    test_class: Optional[str] = None
+    preconditions: Optional[str] = None
+    script_path: Optional[str] = None
     local_case_id: str
     req_id: Optional[str] = None
     title: str

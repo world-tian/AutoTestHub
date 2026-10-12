@@ -258,7 +258,7 @@ export const ReportDetail: React.FC = () => {
                     expandable={{
                       expandedRowRender: (record) => (
                         <div style={{ margin: 0 }}>
-                          <Title level={5}>执行日志</Title>
+                          <Title level={5}>执行日志与详细数据</Title>
                           <pre style={{ 
                             background: '#1e1e1e', 
                             color: '#a9b7c6', 
@@ -271,6 +271,39 @@ export const ReportDetail: React.FC = () => {
                           }}>
                             {record.log_url || record.error_message || '无日志输出'}
                           </pre>
+                          {record.artifacts && (
+                            <pre style={{
+                              background: '#f6f8fa',
+                              color: '#24292f',
+                              padding: '16px',
+                              borderRadius: '8px',
+                              whiteSpace: 'pre-wrap',
+                              maxHeight: '500px',
+                              overflowY: 'auto',
+                              fontFamily: 'monospace'
+                            }}>
+                              {JSON.stringify(record.artifacts, (key, value) => (
+                                key === 'preview_data_url' ? '[embedded image preview]' : value
+                              ), 2)}
+                            </pre>
+                          )}
+                          {Object.entries((record.artifacts?.images || {}) as Record<string, any>).map(([key, image]) => (
+                            image?.preview_data_url ? (
+                              <div key={key} style={{ marginTop: '16px' }}>
+                                <Text strong>{key}</Text>
+                                <div>
+                                  <img
+                                    src={image.preview_data_url}
+                                    alt={key}
+                                    style={{ maxWidth: '100%', border: '1px solid #d9d9d9', borderRadius: '6px' }}
+                                  />
+                                </div>
+                                <Text type="secondary">
+                                  {image.width}x{image.height} px; source: {image.path}
+                                </Text>
+                              </div>
+                            ) : null
+                          ))}
                         </div>
                       ),
                     }}
